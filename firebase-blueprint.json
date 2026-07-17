@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile containing details like display name, bio, aura score, and other social stats.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "avatar": { "type": "string" },
+        "bio": { "type": "string" },
+        "location": { "type": "string" },
+        "followersCount": { "type": "number" },
+        "followingCount": { "type": "number" },
+        "auraScore": { "type": "number" },
+        "totalOutfits": { "type": "number" },
+        "instagram": { "type": "string" },
+        "whatsapp": { "type": "string" }
+      },
+      "required": ["uid", "username", "displayName"]
+    },
+    "Look": {
+      "title": "Look",
+      "description": "An outfit look uploaded by a user with optional tagged clothes items.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "image": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "likes": { "type": "number" },
+        "likedBy": { "type": "array" },
+        "views": { "type": "number" },
+        "auraScore": { "type": "number" },
+        "date": { "type": "string" },
+        "commentsCount": { "type": "number" },
+        "location": { "type": "string" },
+        "aesthetics": { "type": "array" },
+        "tags": { "type": "array" }
+      },
+      "required": ["id", "userId", "username", "image", "title"]
+    },
+    "ClosetItem": {
+      "title": "ClosetItem",
+      "description": "An item of clothing inside a user's digital closet, which can optionally be marked for sale.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "brand": { "type": "string" },
+        "price": { "type": "number" },
+        "image": { "type": "string" },
+        "forSale": { "type": "boolean" },
+        "boughtAt": { "type": "string" },
+        "timesWorn": { "type": "number" },
+        "costPerWear": { "type": "number" }
+      },
+      "required": ["id", "userId", "name", "category", "image"]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "A user-facing notification like a like, comment, or buy request.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "fromUser": { "type": "object" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "lookImage": { "type": "string" },
+        "auraAdded": { "type": "number" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "type", "fromUser", "title", "subtitle"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile records containing biographical, social, and aura information."
+    },
+    "/looks/{lookId}": {
+      "schema": "Look",
+      "description": "Looks uploaded by users, containing outfit tags and social metadata."
+    },
+    "/closet/{itemId}": {
+      "schema": "ClosetItem",
+      "description": "User clothes database, supporting cost-per-wear tracking and marketplace listings."
+    },
+    "/notifications/{notifId}": {
+      "schema": "AppNotification",
+      "description": "Social interactions and purchase proposals sent to specific users."
+    }
+  }
+}

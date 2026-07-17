@@ -1,0 +1,6 @@
+{
+  "name": "Cloz",
+  "description": "Rede social e armário digital inteligente para compartilhamento, organização e catalogação automática com geração de peças 3D em estúdio.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
