@@ -1179,17 +1179,33 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
       if (user) {
         setCurrentUser(user);
         
-        // Load or create user profile
         const profileRef = doc(db, 'users', user.uid);
-        const profileSnap = await getDoc(profileRef);
+        let loadedProfile: UserProfile | null = null;
         
-        if (!profileSnap.exists()) {
-          // Create a new default profile if it doesn't exist
+        try {
+          const profileSnap = await getDoc(profileRef);
+          if (profileSnap && profileSnap.exists()) {
+            loadedProfile = profileSnap.data() as UserProfile;
+          }
+        } catch (firestoreError) {
+          console.warn("Firestore error or offline on auth state change:", firestoreError);
+          // Try local storage fallback
+          const storedProfileStr = localStorage.getItem('cloz_profile');
+          if (storedProfileStr) {
+            try {
+              loadedProfile = JSON.parse(storedProfileStr);
+            } catch (e) {
+              console.error("Error parsing stored profile:", e);
+            }
+          }
+        }
+
+        if (!loadedProfile) {
           const defaultProfile: UserProfile = {
             uid: user.uid,
-            username: (user.email?.split('@')[0] || 'user_' + user.uid.substring(0, 5)),
-            displayName: (user.email?.split('@')[0] || 'User'),
-            avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200',
+            username: (user.email?.split('@')[0] || 'user_' + user.uid.substring(0, 5)).toLowerCase().replace(/[^a-z0-9_.]/g, ''),
+            displayName: (user.displayName || user.email?.split('@')[0] || 'User'),
+            avatar: user.photoURL || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200',
             bio: 'Visual Curator.',
             location: 'Brasil',
             followersCount: 0,
@@ -1199,23 +1215,38 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
             following: [],
             followers: []
           };
-          await setDoc(profileRef, defaultProfile);
+          loadedProfile = defaultProfile;
+          
+          // Background setDoc
+          setDoc(profileRef, defaultProfile).catch(e => console.warn("Failed background setDoc on auth change:", e));
         }
+
+        const sanitized = {
+          ...loadedProfile,
+          following: loadedProfile.following || [],
+          followers: loadedProfile.followers || [],
+          followersCount: loadedProfile.followersCount ?? 0,
+          followingCount: loadedProfile.followingCount ?? 0
+        };
+        setProfile(sanitized);
+        localStorage.setItem('cloz_profile', JSON.stringify(sanitized));
 
         // Set up real-time listener for current user profile
         unsubscribeProfile = onSnapshot(profileRef, (snap) => {
           if (snap.exists()) {
             const profData = snap.data() as UserProfile;
-            const sanitized = {
+            const san = {
               ...profData,
               following: profData.following || [],
               followers: profData.followers || [],
               followersCount: profData.followersCount ?? 0,
               followingCount: profData.followingCount ?? 0
             };
-            setProfile(sanitized);
-            localStorage.setItem('cloz_profile', JSON.stringify(sanitized));
+            setProfile(san);
+            localStorage.setItem('cloz_profile', JSON.stringify(san));
           }
+        }, (err) => {
+          console.warn("Profile real-time listener error:", err);
         });
         
       } else {

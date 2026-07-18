@@ -88,12 +88,18 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         const uid = userCredential.user.uid;
         
         // 2. Fetch the profile from Firestore
-        const userDoc = await getDoc(doc(db, 'users', uid));
         let loggedInProfile: any = null;
-        if (userDoc.exists()) {
-          loggedInProfile = userDoc.data();
-        } else {
-          // Fallback if profile doesn't exist yet for some reason
+        try {
+          const userDoc = await getDoc(doc(db, 'users', uid));
+          if (userDoc.exists()) {
+            loggedInProfile = userDoc.data();
+          }
+        } catch (firestoreError) {
+          console.warn("Firestore offline or error on email login, using fallback:", firestoreError);
+        }
+
+        if (!loggedInProfile) {
+          // Fallback if profile doesn't exist yet for some reason or Firestore is offline
           loggedInProfile = {
             uid,
             username: email.toLowerCase().split('@')[0].replace(/[^a-z0-9_.]/g, ''),
@@ -107,7 +113,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             totalOutfits: 0,
             email: email.toLowerCase()
           };
-          await setDoc(doc(db, 'users', uid), loggedInProfile);
+          // Try to save to Firestore in background, ignore error
+          setDoc(doc(db, 'users', uid), loggedInProfile).catch(e => console.warn("Background setDoc failed:", e));
         }
 
         // 3. Store in local storage for session durability in Sandbox frames
@@ -153,29 +160,57 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       
-      // Check if profile exists
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
       let loggedInProfile: UserProfile;
-      if (userDoc.exists()) {
-        loggedInProfile = userDoc.data() as UserProfile;
-      } else {
-        // Create user profile with no fake stats (0 everywhere)
+      try {
+        // Check if profile exists
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          loggedInProfile = userDoc.data() as UserProfile;
+        } else {
+          // Create user profile with no fake stats (0 everywhere)
+          let baseUsername = user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '') : `user_${user.uid.slice(0, 5)}`;
+          if (!baseUsername) baseUsername = `user_${user.uid.slice(0, 5)}`;
+          
+          let uniqueUsername = baseUsername;
+          let isUnique = false;
+          let attempts = 0;
+          try {
+            while (!isUnique && attempts < 10) {
+              const uQuery = query(collection(db, 'users'), where('username', '==', uniqueUsername));
+              const uSnapshot = await getDocs(uQuery);
+              if (uSnapshot.empty) {
+                isUnique = true;
+              } else {
+                attempts++;
+                uniqueUsername = `${baseUsername}${Math.floor(Math.random() * 1000)}`;
+              }
+            }
+          } catch (e) {
+            console.warn("Could not check username uniqueness from Firestore, using random suffix:", e);
+            uniqueUsername = `${baseUsername}${Math.floor(Math.random() * 10000)}`;
+          }
+
+          loggedInProfile = {
+            uid: user.uid,
+            username: uniqueUsername,
+            displayName: user.displayName || user.email?.split('@')[0] || 'Usuário',
+            avatar: user.photoURL || avatarsPreset[0],
+            bio: 'Explorando novas formas de ver a moda.',
+            location: 'Brasil',
+            followersCount: 0,
+            followingCount: 0,
+            auraScore: 0,
+            totalOutfits: 0,
+            email: user.email?.toLowerCase() || ''
+          };
+          await setDoc(doc(db, 'users', user.uid), loggedInProfile);
+        }
+      } catch (firestoreError: any) {
+        console.warn("Firestore error during Google sign-in. Falling back to local profile generation to prevent offline crash:", firestoreError);
+        
         let baseUsername = user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '') : `user_${user.uid.slice(0, 5)}`;
         if (!baseUsername) baseUsername = `user_${user.uid.slice(0, 5)}`;
-        
-        let uniqueUsername = baseUsername;
-        let isUnique = false;
-        let attempts = 0;
-        while (!isUnique && attempts < 10) {
-          const uQuery = query(collection(db, 'users'), where('username', '==', uniqueUsername));
-          const uSnapshot = await getDocs(uQuery);
-          if (uSnapshot.empty) {
-            isUnique = true;
-          } else {
-            attempts++;
-            uniqueUsername = `${baseUsername}${Math.floor(Math.random() * 1000)}`;
-          }
-        }
+        let uniqueUsername = `${baseUsername}${Math.floor(Math.random() * 10000)}`;
 
         loggedInProfile = {
           uid: user.uid,
@@ -190,7 +225,11 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           totalOutfits: 0,
           email: user.email?.toLowerCase() || ''
         };
-        await setDoc(doc(db, 'users', user.uid), loggedInProfile);
+        
+        // Save in background if possible, don't block
+        setDoc(doc(db, 'users', user.uid), loggedInProfile).catch(e => {
+          console.warn("Failed background setDoc:", e);
+        });
       }
       
       // Store in local storage for session durability in Sandbox frames
