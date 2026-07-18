@@ -59,6 +59,7 @@ export interface UserProfile {
   followingCount: number;
   auraScore: number;
   totalOutfits: number;
+  email?: string;
   instagram?: string;
   whatsapp?: string;
   following?: string[];

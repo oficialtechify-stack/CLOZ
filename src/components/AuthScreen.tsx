@@ -187,7 +187,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           followersCount: 0,
           followingCount: 0,
           auraScore: 0,
-          totalOutfits: 0
+          totalOutfits: 0,
+          email: user.email?.toLowerCase() || ''
         };
         await setDoc(doc(db, 'users', user.uid), loggedInProfile);
       }
@@ -211,29 +212,6 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGuestSignIn = () => {
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      const guestProfile: UserProfile = {
-        uid: 'guest_user',
-        username: 'visitante_cloz',
-        displayName: 'Visitante Especial',
-        avatar: avatarsPreset[0],
-        bio: 'Modo demonstração do CLOZ. Explore todas as funcionalidades!',
-        location: 'São Paulo, Brasil',
-        followersCount: 12,
-        followingCount: 18,
-        auraScore: 85,
-        totalOutfits: 3
-      };
-      localStorage.setItem('cloz_profile', JSON.stringify(guestProfile));
-      localStorage.setItem('cloz_user', JSON.stringify({ uid: 'guest_user', email: 'visitante@cloz.com' }));
-      onAuthSuccess(guestProfile);
-      setLoading(false);
-    }, 400);
   };
 
   return (
@@ -390,7 +368,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
 
       <div className="relative flex py-4 items-center">
         <div className="flex-grow border-t border-gray-100"></div>
-        <span className="flex-shrink mx-4 text-gray-400 text-[10px] uppercase font-mono tracking-wider">ou</span>
+        <span className="flex-shrink mx-4 text-gray-400 text-[10px] uppercase font-mono tracking-wider font-semibold">ou</span>
         <div className="flex-grow border-t border-gray-100"></div>
       </div>
 
@@ -398,7 +376,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         type="button"
         onClick={handleGoogleSignIn}
         disabled={loading}
-        className="w-full bg-white border border-gray-200 text-gray-700 py-3 rounded-xl text-xs font-bold hover:bg-neutral-50 transition active:scale-98 disabled:opacity-40 flex items-center justify-center space-x-2.5 cursor-pointer"
+        className="w-full bg-white border border-gray-200 text-gray-700 py-3 rounded-xl text-xs font-bold hover:bg-neutral-50 transition active:scale-98 disabled:opacity-40 flex items-center justify-center space-x-2.5 cursor-pointer shadow-2xs"
       >
         <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -407,16 +385,6 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335" />
         </svg>
         <span>Entrar com o Google</span>
-      </button>
-
-      <button
-        type="button"
-        onClick={handleGuestSignIn}
-        disabled={loading}
-        className="w-full bg-neutral-100 hover:bg-neutral-200/60 text-gray-800 py-3 rounded-xl text-xs font-bold transition active:scale-98 disabled:opacity-40 flex items-center justify-center space-x-2 cursor-pointer mt-2.5"
-      >
-        <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-        <span>Entrar como Visitante (Modo Demo)</span>
       </button>
 
       <div className="text-center mt-6">

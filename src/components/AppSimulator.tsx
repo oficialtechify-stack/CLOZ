@@ -1865,38 +1865,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       Veja os maiores curadores de moda e criadores de tendência do país. Acumule curtidas e inspire a comunidade para subir no ranking!
                     </p>
                   </div>
-                ) : (
-                  <div className="m-3 bg-[#3A3E2B] text-white p-4.5 rounded-3xl relative overflow-hidden flex justify-between items-center text-left shadow-xs animate-fadeIn">
-                    <div className="space-y-3 z-10">
-                      <h3 className="text-xs font-black tracking-widest text-white/95 uppercase">CLOZ</h3>
-                      <div className="space-y-1 text-[11px] text-white/80 font-medium">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="font-mono text-[9px] text-white/50">1</span>
-                          <span>Différance</span>
-                          <span className="text-[9px] text-white/50">ⓘ</span>
-                        </div>
-                        <div className="flex items-center space-x-1.5">
-                          <span className="font-mono text-[9px] text-white/50">2</span>
-                          <span>Cada espelho é uma janela</span>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => setActiveTab('add')}
-                        className="bg-white text-[#3A3E2B] px-3.5 py-1.5 rounded-full text-[10px] font-bold flex items-center space-x-1 shadow-sm hover:bg-neutral-100 transition mt-1 cursor-pointer"
-                      >
-                        <span>Entrar na conversa</span>
-                        <span className="text-[10px]">↗</span>
-                      </button>
-                    </div>
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 w-24 h-24 opacity-80 select-none pointer-events-none">
-                      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full text-white/80">
-                        <path d="M50 15 C35 32 22 50 22 68 C22 81 35 86 50 86 C65 86 78 81 78 68 C78 50 65 32 50 15 Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="3 3" />
-                        <path d="M46 28 C37 42 28 55 28 68 C28 77 37 82 46 82 C55 82 64 77 64 68 C64 55 55 42 46 28 Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        <path d="M42 42 C38 51 34 60 34 68 C34 73 38 76 42 76 C46 76 50 73 50 68 C50 60 46 51 42 42 Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1" />
-                      </svg>
-                    </div>
-                  </div>
-                )}
+                ) : null}
 
                 {/* Filters Row */}
                 {feedSubTab !== 'aura' && (
