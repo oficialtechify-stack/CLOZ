@@ -1744,99 +1744,102 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
     return days;
   };
 
+  if (authLoading) {
+    return (
+      <div className="bg-[#FAF9F6] text-[#171717] min-h-screen font-sans flex flex-col items-center justify-center p-8 text-center space-y-3">
+        <div className="w-10 h-10 border-4 border-black/10 border-t-black rounded-full animate-spin"></div>
+        <p className="text-xs text-gray-400 font-mono">Carregando Cloz...</p>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <AuthScreen onAuthSuccess={(prof) => {
+        setProfile(prof);
+        setCurrentUser(auth.currentUser || { uid: prof.uid, email: (prof as any).email || `${prof.username}@cloz.app` });
+      }} />
+    );
+  }
+
   return (
     <div className="bg-[#FAF9F6] text-[#171717] min-h-screen font-sans flex flex-col">
       {/* Real Responsive Web Header */}
-      {profile && (
-        <header className="sticky top-0 bg-white/90 backdrop-blur z-40 border-b border-gray-200/50 flex items-center justify-between px-6 h-16 shadow-2xs">
-          <div className="flex items-center space-x-6">
-            <button 
-              onClick={() => { setActiveTab('feed'); setSelectedLook(null); setSelectedItem(null); }}
-              className="font-display font-extrabold text-xl tracking-tight hover:opacity-80 transition cursor-pointer"
-            >
-              Cloz
-            </button>
-          </div>
+      <header className="sticky top-0 bg-white/90 backdrop-blur z-40 border-b border-gray-200/50 flex items-center justify-between px-6 h-16 shadow-2xs">
+        <div className="flex items-center space-x-6">
+          <button 
+            onClick={() => { setActiveTab('feed'); setSelectedLook(null); setSelectedItem(null); }}
+            className="font-display font-extrabold text-xl tracking-tight hover:opacity-80 transition cursor-pointer"
+          >
+            Cloz
+          </button>
+        </div>
 
-          {/* Desktop Navigation Menu */}
-          <div className="hidden md:flex items-center space-x-6 text-xs font-semibold">
-            <button 
-              onClick={() => { setActiveTab('feed'); setSelectedLook(null); setSelectedItem(null); }}
-              className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'feed' ? 'text-black font-bold' : 'text-gray-400'}`}
-            >
-              <BookOpen className="w-4 h-4" />
-              <span>Feed</span>
-            </button>
-            <button 
-              onClick={() => { setActiveTab('explore'); setSelectedLook(null); setSelectedItem(null); }}
-              className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'explore' ? 'text-black font-bold' : 'text-gray-400'}`}
-            >
-              <Grid className="w-4 h-4" />
-              <span>Explorar</span>
-            </button>
-            <button 
-              onClick={() => { setActiveTab('add'); setSelectedLook(null); setSelectedItem(null); }}
-              className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'add' ? 'text-black font-bold' : 'text-gray-400'}`}
-            >
-              <span className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">+</span>
-              <span>Postar Look</span>
-            </button>
-            <button 
-              onClick={() => { setActiveTab('notifications'); setSelectedLook(null); setSelectedItem(null); }}
-              className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 relative ${activeTab === 'notifications' ? 'text-black font-bold' : 'text-gray-400'}`}
-            >
-              <Bell className="w-4 h-4" />
-              <span>Notificações</span>
-              {notifications.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] px-1 rounded-full">
-                  {notifications.length}
-                </span>
-              )}
-            </button>
-            <button 
-              onClick={() => { setActiveTab('profile'); setSelectedLook(null); setSelectedItem(null); }}
-              className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'profile' ? 'text-black font-bold' : 'text-gray-400'}`}
-            >
-              <User className="w-4 h-4" />
-              <span>Perfil</span>
-            </button>
-          </div>
+        {/* Desktop Navigation Menu */}
+        <div className="hidden md:flex items-center space-x-6 text-xs font-semibold">
+          <button 
+            onClick={() => { setActiveTab('feed'); setSelectedLook(null); setSelectedItem(null); }}
+            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'feed' ? 'text-black font-bold' : 'text-gray-400'}`}
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Feed</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('explore'); setSelectedLook(null); setSelectedItem(null); }}
+            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'explore' ? 'text-black font-bold' : 'text-gray-400'}`}
+          >
+            <Grid className="w-4 h-4" />
+            <span>Explorar</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('add'); setSelectedLook(null); setSelectedItem(null); }}
+            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'add' ? 'text-black font-bold' : 'text-gray-400'}`}
+          >
+            <span className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">+</span>
+            <span>Postar Look</span>
+          </button>
+          <button 
+            onClick={() => { setActiveTab('notifications'); setSelectedLook(null); setSelectedItem(null); }}
+            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 relative ${activeTab === 'notifications' ? 'text-black font-bold' : 'text-gray-400'}`}
+          >
+            <Bell className="w-4 h-4" />
+            <span>Notificações</span>
+            {notifications.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] px-1 rounded-full">
+                {notifications.length}
+              </span>
+            )}
+          </button>
+          <button 
+            onClick={() => { setActiveTab('profile'); setSelectedLook(null); setSelectedItem(null); }}
+            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'profile' ? 'text-black font-bold' : 'text-gray-400'}`}
+          >
+            <User className="w-4 h-4" />
+            <span>Perfil</span>
+          </button>
+        </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="hidden sm:flex items-center space-x-2 bg-[#171717]/5 px-3 py-1.5 rounded-full text-xs font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="font-bold text-gray-800">+{profile.auraScore} Aura</span>
-            </div>
-            <button 
-              onClick={handleLogout}
-              className="text-xs text-gray-500 hover:text-red-600 transition font-medium cursor-pointer flex items-center space-x-1"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sair</span>
-            </button>
+        <div className="flex items-center space-x-4">
+          <div className="hidden sm:flex items-center space-x-2 bg-[#171717]/5 px-3 py-1.5 rounded-full text-xs font-mono">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span className="font-bold text-gray-800">+{profile.auraScore} Aura</span>
           </div>
-        </header>
-      )}
+          <button 
+            onClick={handleLogout}
+            className="text-xs text-gray-500 hover:text-red-600 transition font-medium cursor-pointer flex items-center space-x-1"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Sair</span>
+          </button>
+        </div>
+      </header>
 
       {/* Main Dynamic View Container */}
       <div className="flex-1 w-full max-w-3xl mx-auto px-4 py-8 flex flex-col gap-8">
         
         {/* Dynamic Content Frame */}
         <div className="flex-1 bg-white rounded-3xl border border-gray-200/50 p-6 shadow-2xs flex flex-col relative overflow-hidden">
-          {authLoading ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
-              <div className="w-10 h-10 border-4 border-black/10 border-t-black rounded-full animate-spin"></div>
-              <p className="text-xs text-gray-400 font-mono">Carregando Cloz...</p>
-            </div>
-          ) : !profile ? (
-            <div className="flex-1 flex flex-col items-center justify-center py-12">
-              <AuthScreen onAuthSuccess={(prof) => {
-                setProfile(prof);
-                setCurrentUser(auth.currentUser || { uid: prof.uid, email: (prof as any).email || `${prof.username}@cloz.app` });
-              }} />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col">
             
             {/* 1. FEED VIEW */}
             {activeTab === 'feed' && (
@@ -2804,40 +2807,45 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             return;
                           }
 
-                          try {
-                            if (cleanUsername !== profile.username) {
+                          let usernameTaken = false;
+                          if (cleanUsername !== profile.username) {
+                            try {
                               const uQuery = query(collection(db, 'users'), where('username', '==', cleanUsername));
                               const uSnapshot = await getDocs(uQuery);
-                              if (!uSnapshot.empty) {
-                                setProfileEditError('Este nome de usuário já está sendo usado por outra pessoa. Escolha outro.');
-                                return;
+                              if (uSnapshot && !uSnapshot.empty) {
+                                usernameTaken = true;
                               }
+                            } catch (e) {
+                              console.warn("Could not verify username uniqueness from Firestore (offline or error):", e);
                             }
-
-                            const updated = {
-                              ...profile,
-                              name: editName,
-                              username: cleanUsername,
-                              bio: editBio,
-                              location: editLocation,
-                              instagram: editInstagram
-                            };
-                            await setDoc(doc(db, 'users', profile.uid), updated);
-                            setProfile(updated);
-                            setSettingsScreen('main');
-                          } catch (err) {
-                            console.error(err);
-                            // Fallback local update
-                            setProfile(prev => prev ? ({
-                              ...prev,
-                              name: editName,
-                              username: cleanUsername,
-                              bio: editBio,
-                              location: editLocation,
-                              instagram: editInstagram
-                            }) : null);
-                            setSettingsScreen('main');
                           }
+
+                          if (usernameTaken) {
+                            setProfileEditError('Este nome de usuário já está sendo usado por outra pessoa. Escolha outro.');
+                            return;
+                          }
+
+                          const updated = {
+                            ...profile,
+                            name: editName,
+                            username: cleanUsername,
+                            bio: editBio,
+                            location: editLocation,
+                            instagram: editInstagram
+                          };
+
+                          // Update state and local storage immediately so the UI is super fast and offline-friendly
+                          setProfile(updated);
+                          localStorage.setItem('cloz_profile', JSON.stringify(updated));
+
+                          // Try to update Firestore in background/gracefully
+                          try {
+                            await setDoc(doc(db, 'users', profile.uid), updated);
+                          } catch (err) {
+                            console.warn("Could not save profile to Firestore immediately (will sync when online):", err);
+                          }
+
+                          setSettingsScreen('main');
                         }}
                         className="text-xs font-bold text-[#1E3F20]"
                       >
@@ -3743,11 +3751,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
               </div>
             )}
             </div>
-            )}
-            </div>
           )}
         </div>
       </div>
+    </div>
 
       {/* BOTTOM NAV BAR (Mobile Only, Fixed to screen bottom) */}
       {profile && (
