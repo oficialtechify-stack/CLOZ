@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronRight, ArrowDownRight, Smartphone, BookOpen, Layers, Grid, Shield, Check, HelpCircle, ArrowRight } from 'lucide-react';
-import { FREQUENT_QUESTIONS_LEKONDO, FREQUENT_QUESTIONS_CLOSET } from '../data';
+import { FREQUENT_QUESTIONS_CLOZ, FREQUENT_QUESTIONS_CLOSET } from '../data';
 
 interface LandingPageProps {
   onEnterApp: () => void;
@@ -282,7 +282,7 @@ export default function LandingPage({ onEnterApp }: LandingPageProps) {
             </div>
 
             <div className="space-y-4">
-              {FREQUENT_QUESTIONS_LEKONDO.map((faq, index) => (
+              {FREQUENT_QUESTIONS_CLOZ.map((faq, index) => (
                 <div key={index} className="border-b border-gray-200 pb-4">
                   <button 
                     onClick={() => toggleFaq(index)}

@@ -1902,7 +1902,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                 ) : (
                   <div className="m-3 bg-[#3A3E2B] text-white p-4.5 rounded-3xl relative overflow-hidden flex justify-between items-center text-left shadow-xs animate-fadeIn">
                     <div className="space-y-3 z-10">
-                      <h3 className="text-xs font-black tracking-widest text-white/95 uppercase">LEKONDO</h3>
+                      <h3 className="text-xs font-black tracking-widest text-white/95 uppercase">CLOZ</h3>
                       <div className="space-y-1 text-[11px] text-white/80 font-medium">
                         <div className="flex items-center space-x-1.5">
                           <span className="font-mono text-[9px] text-white/50">1</span>

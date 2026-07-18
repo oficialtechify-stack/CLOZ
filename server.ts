@@ -139,7 +139,7 @@ Exemplo: [100, 200, 800, 800] representa uma caixa de y=10% a 80%, x=20% a 80%.
 Retorne também os seguintes metadados para cada peça:
 - name: Nome amigável e descritivo da peça em português (ex: "Jeans Baggy Lavagem Clara", "Jaqueta de Couro Preta", "Camiseta Preta Gola Careca").
 - category: Uma das seguintes categorias exatas em português: "Jeans" | "Jaqueta" | "Camiseta" | "Sapato" | "Acessório" | "Outros".
-- brand: Uma marca estimada ou fictícia realista em português (ex: "Zara", "Lekondo", "Nike", "Adidas", "Diesel", "Handmade").
+- brand: Uma marca estimada ou fictícia realista em português (ex: "Zara", "CLOZ", "Nike", "Adidas", "Diesel", "Handmade").
 - price: Um preço estimado fictício em Reais (número, ex: 189.90).
 - x_center: A coordenada horizontal central em porcentagem (0 a 100) da peça na imagem inteira (para colocar a tag interativa na foto).
 - y_center: A coordenada vertical central em porcentagem (0 a 100) da peça na imagem inteira.
@@ -158,7 +158,7 @@ Retorne também os seguintes metadados para cada peça:
           {
             name: "Camiseta Básica de Algodão",
             category: "Camiseta",
-            brand: "Lekondo Studio",
+            brand: "CLOZ Studio",
             price: 89.90,
             box: [150, 300, 480, 700],
             x_center: 50,
@@ -167,7 +167,7 @@ Retorne também os seguintes metadados para cada peça:
           {
             name: "Calça Jeans Confort Slim",
             category: "Jeans",
-            brand: "Lekondo Denim",
+            brand: "CLOZ Denim",
             price: 199.90,
             box: [480, 280, 850, 720],
             x_center: 50,

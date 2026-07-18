@@ -350,7 +350,7 @@ export const SEED_NOTIFICATIONS: AppNotification[] = [
   }
 ];
 
-export const FREQUENT_QUESTIONS_LEKONDO = [
+export const FREQUENT_QUESTIONS_CLOZ = [
   {
     q: 'O que é um calendário de looks?',
     a: 'O calendário de looks é uma forma visual de documentar o que você veste dia após dia. Cada quadrado na sua grade mensal representa o look usado naquele dia, ajudando a criar consciência sobre o seu estilo e uso real do seu armário.'

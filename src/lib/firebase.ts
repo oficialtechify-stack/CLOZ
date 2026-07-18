@@ -14,7 +14,21 @@ const envConfig = {
   firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID
 };
 
-const firebaseConfig = envConfig.apiKey ? envConfig : rawConfig;
+const hasEnvConfig = !!(envConfig.apiKey && envConfig.projectId);
+const hasRawConfig = !!(rawConfig && rawConfig.apiKey);
+
+const dummyConfig = {
+  apiKey: "AIzaSyDummyKeyForVercelPreview-ToFixConfigureEnvVars",
+  authDomain: "cloz-preview.firebaseapp.com",
+  projectId: "cloz-preview",
+  storageBucket: "cloz-preview.firebasestorage.app",
+  messagingSenderId: "1234567890",
+  appId: "1:1234567890:web:1234567890",
+  firestoreDatabaseId: ""
+};
+
+const firebaseConfig = hasEnvConfig ? envConfig : (hasRawConfig ? rawConfig : dummyConfig);
+const isMocked = !hasEnvConfig && !hasRawConfig;
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
@@ -25,6 +39,10 @@ export const db = firebaseConfig.firestoreDatabaseId
 
 // Validate Connection to Firestore on startup as required by security guidelines
 async function testConnection() {
+  if (isMocked) {
+    console.log("Firebase initialized in fallback sandbox mode (no Vercel environment variables or configuration detected).");
+    return;
+  }
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
