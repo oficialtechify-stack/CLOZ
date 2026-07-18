@@ -433,11 +433,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
   // Synchronize Edit Profile states with current profile
   useEffect(() => {
     if (profile) {
-      setEditName(profile.name || 'Rick');
-      setEditUsername(profile.username || 'rickzinxx');
+      setEditName(profile.name || profile.displayName || '');
+      setEditUsername(profile.username || '');
       setEditBio(profile.bio || '');
-      setEditLocation(profile.location || 'São Paulo, Brazil');
-      setEditInstagram(profile.instagram || 'rickzinxx_');
+      setEditLocation(profile.location || '');
+      setEditInstagram(profile.instagram || '');
       setProfileEditError('');
     }
   }, [profile, settingsScreen]);
@@ -1206,8 +1206,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
             username: (user.email?.split('@')[0] || 'user_' + user.uid.substring(0, 5)).toLowerCase().replace(/[^a-z0-9_.]/g, ''),
             displayName: (user.displayName || user.email?.split('@')[0] || 'User'),
             avatar: user.photoURL || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200',
-            bio: 'Visual Curator.',
-            location: 'Brasil',
+            bio: '',
+            location: '',
             followersCount: 0,
             followingCount: 0,
             auraScore: 0,
@@ -2591,7 +2591,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                         <div className="flex items-center space-x-3.5">
                           <img src={profile.avatar} className="w-11 h-11 rounded-full object-cover border border-neutral-100 shadow-3xs" alt="avatar" />
                           <div>
-                            <p className="text-xs font-bold text-gray-800 leading-none">{profile.name || 'Rick'}</p>
+                            <p className="text-xs font-bold text-gray-800 leading-none">{profile.name || profile.displayName || ''}</p>
                             <p className="text-[10px] text-gray-400 font-medium mt-1">{t('editProfile')}</p>
                           </div>
                         </div>
@@ -3364,23 +3364,24 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             <div className="flex items-center space-x-1.5">
                               {/* Name ("Rick") with beautiful Instagram-style pinkish camera brand icon */}
                               <h3 className="font-display font-extrabold text-base text-gray-900 leading-none">
-                                {profile.name || 'Rick'}
+                                {profile.name || profile.displayName || ''}
                               </h3>
                               
-                              <button
-                                onClick={() => {
-                                  const ig = profile.instagram || 'rickzinxx_';
-                                  window.open(`https://instagram.com/${ig}`, '_blank');
-                                }}
-                                className="p-1 hover:bg-neutral-100 rounded-full transition cursor-pointer flex items-center justify-center shrink-0"
-                                title="Instagram"
-                              >
-                                <svg className="w-3.5 h-3.5 text-pink-500 fill-none stroke-current" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                  <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-                                </svg>
-                              </button>
+                              {profile.instagram && (
+                                <button
+                                  onClick={() => {
+                                    window.open(`https://instagram.com/${profile.instagram}`, '_blank');
+                                  }}
+                                  className="p-1 hover:bg-neutral-100 rounded-full transition cursor-pointer flex items-center justify-center shrink-0"
+                                  title="Instagram"
+                                >
+                                  <svg className="w-3.5 h-3.5 text-pink-500 fill-none stroke-current" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                                    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                                    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                                  </svg>
+                                </button>
+                              )}
                             </div>
                             
                             <span className="text-xs font-medium text-gray-400 block">
@@ -3418,7 +3419,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       className="flex items-center space-x-1.5 border border-gray-200/80 bg-neutral-50/50 px-3 py-1.8 rounded-full text-gray-700 font-mono text-[11px] font-bold hover:bg-neutral-100 transition duration-200 cursor-pointer shadow-3xs"
                     >
                       <MapPin className="w-3.5 h-3.5 text-gray-400 stroke-[2.5]" />
-                      <span>{profile.location || 'São Paulo, Brazil'}</span>
+                      <span>{profile.location || 'Não especificado'}</span>
                       <ChevronRight className="w-3 h-3 text-gray-400 stroke-[2.5]" />
                     </button>
 

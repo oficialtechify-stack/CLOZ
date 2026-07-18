@@ -16,7 +16,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [location, setLocation] = useState('Porto Alegre, Brazil');
+  const [location, setLocation] = useState('');
   const [bio, setBio] = useState('');
   const [avatar, setAvatar] = useState('https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200');
   
@@ -66,8 +66,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           username: cleanUsername,
           displayName,
           avatar,
-          bio: bio || 'Explorando novas formas de ver a moda.',
-          location: location || 'Brasil',
+          bio: bio || '',
+          location: location || '',
           followersCount: 0,
           followingCount: 0,
           auraScore: 0,
@@ -105,8 +105,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             username: email.toLowerCase().split('@')[0].replace(/[^a-z0-9_.]/g, ''),
             displayName: email.split('@')[0],
             avatar,
-            bio: 'Explorando novas formas de ver a moda.',
-            location: 'Brasil',
+            bio: '',
+            location: '',
             followersCount: 0,
             followingCount: 0,
             auraScore: 0,
@@ -195,8 +195,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             username: uniqueUsername,
             displayName: user.displayName || user.email?.split('@')[0] || 'Usuário',
             avatar: user.photoURL || avatarsPreset[0],
-            bio: 'Explorando novas formas de ver a moda.',
-            location: 'Brasil',
+            bio: '',
+            location: '',
             followersCount: 0,
             followingCount: 0,
             auraScore: 0,
@@ -217,8 +217,8 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           username: uniqueUsername,
           displayName: user.displayName || user.email?.split('@')[0] || 'Usuário',
           avatar: user.photoURL || avatarsPreset[0],
-          bio: 'Explorando novas formas de ver a moda.',
-          location: 'Brasil',
+          bio: '',
+          location: '',
           followersCount: 0,
           followingCount: 0,
           auraScore: 0,
