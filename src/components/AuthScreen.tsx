@@ -45,6 +45,16 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         }
         
         const cleanUsername = username.toLowerCase().replace(/[^a-z0-9_.]/g, '');
+        if (cleanUsername.length < 3) {
+          throw new Error('O nome de usuário deve ter pelo menos 3 caracteres.');
+        }
+
+        // Check if username already exists in Firestore
+        const usernameQuery = query(collection(db, 'users'), where('username', '==', cleanUsername));
+        const usernameSnapshot = await getDocs(usernameQuery);
+        if (!usernameSnapshot.empty) {
+          throw new Error('Este nome de usuário já está sendo usado por outra pessoa. Escolha outro.');
+        }
         
         // 1. Create firebase user using standard firebase auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -150,9 +160,26 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
         loggedInProfile = userDoc.data() as UserProfile;
       } else {
         // Create user profile with no fake stats (0 everywhere)
+        let baseUsername = user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '') : `user_${user.uid.slice(0, 5)}`;
+        if (!baseUsername) baseUsername = `user_${user.uid.slice(0, 5)}`;
+        
+        let uniqueUsername = baseUsername;
+        let isUnique = false;
+        let attempts = 0;
+        while (!isUnique && attempts < 10) {
+          const uQuery = query(collection(db, 'users'), where('username', '==', uniqueUsername));
+          const uSnapshot = await getDocs(uQuery);
+          if (uSnapshot.empty) {
+            isUnique = true;
+          } else {
+            attempts++;
+            uniqueUsername = `${baseUsername}${Math.floor(Math.random() * 1000)}`;
+          }
+        }
+
         loggedInProfile = {
           uid: user.uid,
-          username: user.email ? user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '') : `user_${user.uid.slice(0, 5)}`,
+          username: uniqueUsername,
           displayName: user.displayName || user.email?.split('@')[0] || 'Usuário',
           avatar: user.photoURL || avatarsPreset[0],
           bio: 'Explorando novas formas de ver a moda.',

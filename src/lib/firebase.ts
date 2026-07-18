@@ -14,8 +14,9 @@ const envConfig = {
   firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID
 };
 
+const firebaseRaw = rawConfig as any;
 const hasEnvConfig = !!(envConfig.apiKey && envConfig.projectId);
-const hasRawConfig = !!(rawConfig && rawConfig.apiKey);
+const hasRawConfig = !!(firebaseRaw && firebaseRaw.apiKey);
 
 const dummyConfig = {
   apiKey: "AIzaSyDummyKeyForVercelPreview-ToFixConfigureEnvVars",
@@ -27,14 +28,14 @@ const dummyConfig = {
   firestoreDatabaseId: ""
 };
 
-const firebaseConfig = hasEnvConfig ? envConfig : (hasRawConfig ? rawConfig : dummyConfig);
-const isMocked = !hasEnvConfig && !hasRawConfig;
+const firebaseConfig = hasEnvConfig ? envConfig : (hasRawConfig ? firebaseRaw : dummyConfig);
+export const isMocked = !hasEnvConfig && !hasRawConfig;
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = firebaseConfig.firestoreDatabaseId 
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId) 
+export const db = (firebaseConfig as any).firestoreDatabaseId 
+  ? getFirestore(app, (firebaseConfig as any).firestoreDatabaseId) 
   : getFirestore(app);
 
 // Validate Connection to Firestore on startup as required by security guidelines
