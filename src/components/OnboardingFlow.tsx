@@ -208,20 +208,22 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
       onboarded: true
     };
     
-    // Persist to Firestore
+    // Persist to Firestore asynchronously so it never hangs/blocks the main button
     try {
       const userDocRef = doc(db, 'users', profile.uid);
-      await updateDoc(userDocRef, {
+      setDoc(userDocRef, {
         displayName: updated.displayName,
         username: updated.username,
         location: updated.location,
         onboarded: true
+      }, { merge: true }).catch((e) => {
+        console.warn("Background setDoc failed:", e);
       });
     } catch (e) {
       console.error("Failed to update profile onboarded status in Firestore:", e);
     }
     
-    // Trigger completion in parent component
+    // Trigger completion in parent component immediately
     onComplete(updated);
   };
 
@@ -469,6 +471,36 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
 
                       {/* Cities List */}
                       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                        {citySearchQuery.trim() && (
+                          <button
+                            onClick={() => {
+                              const queryStr = citySearchQuery.trim();
+                              const parts = queryStr.split(',');
+                              const cityName = parts[0].trim();
+                              const countryName = parts[1] ? parts[1].trim() : 'Brasil';
+                              handleSelectCity({
+                                city: cityName.charAt(0).toUpperCase() + cityName.slice(1),
+                                country: countryName.charAt(0).toUpperCase() + countryName.slice(1),
+                                code: countryName.toLowerCase().includes('brasil') ? 'BR' : 'CUSTOM',
+                                lang: 'Português',
+                                flag: countryName.toLowerCase().includes('brasil') ? '🇧🇷' : '🌐'
+                              });
+                            }}
+                            className="w-full text-left p-3.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 hover:text-white transition flex items-center justify-between cursor-pointer"
+                          >
+                            <div className="flex items-center space-x-3">
+                              <span className="text-2xl">{citySearchQuery.toLowerCase().includes('brasil') ? '🇧🇷' : '🌐'}</span>
+                              <div>
+                                <h4 className="font-semibold text-sm text-white">Usar "{citySearchQuery.split(',')[0].trim()}"</h4>
+                                <p className="text-xs text-emerald-400">Cidade personalizada ({citySearchQuery.split(',')[1] ? citySearchQuery.split(',')[1].trim() : 'Brasil'})</p>
+                              </div>
+                            </div>
+                            <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-md font-mono">
+                              Novo
+                            </span>
+                          </button>
+                        )}
+
                         {filteredCities.map((cityObj, idx) => (
                           <button
                             key={idx}
@@ -488,7 +520,7 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
                           </button>
                         ))}
 
-                        {filteredCities.length === 0 && (
+                        {filteredCities.length === 0 && !citySearchQuery.trim() && (
                           <p className="text-xs text-neutral-500 text-center py-8">Nenhuma cidade encontrada.</p>
                         )}
                       </div>
@@ -1043,20 +1075,17 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
                 <div className="w-16 h-16 rounded-full border border-white flex items-center justify-center mx-auto mb-4">
                   <span className="font-display font-extrabold text-2xl tracking-tight">C</span>
                 </div>
-                <h1 className="text-4xl font-display font-black tracking-widest">CLOZ</h1>
-                <p className="text-[10px] text-emerald-400 font-mono tracking-[0.25em] uppercase">The Digital Dressing Room</p>
+                <h1 className="text-3xl font-display font-black tracking-widest text-white uppercase">BOAS-VINDAS AO CLOZ</h1>
+                <p className="text-[10px] text-emerald-400 font-mono tracking-[0.25em] uppercase">O seu provador digital inteligente</p>
               </div>
 
               {/* Highly Poetic Brand manifesto lines as shown in screenshot */}
-              <div className="space-y-4 max-w-xs mx-auto text-center border-y border-neutral-900 py-6 font-display">
-                <p className="text-xs font-semibold leading-relaxed tracking-wider text-neutral-200">
-                  VESTIR-SE BEM É OUVIR COM OS OLHOS
+              <div className="space-y-4 max-w-sm mx-auto text-center border-y border-neutral-900 py-6 font-display px-4">
+                <p className="text-sm font-semibold leading-relaxed tracking-wider text-neutral-200">
+                  O Cloz redefine a forma como você se veste. Publique e organize suas composições de roupas com tecnologia avançada de remoção de fundo por inteligência artificial.
                 </p>
-                <p className="text-xs font-semibold leading-relaxed tracking-wider text-neutral-200">
-                  LUXO É ATRITO APLICADO COM INTENÇÃO
-                </p>
-                <p className="text-xs font-semibold leading-relaxed tracking-wider text-neutral-200">
-                  O USO DA PEÇA RESIDE EM SEU ESPAÇO PARA RESPIRAR
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  Explore looks de outros usuários no feed global, analise suas combinações de estilo com nossa inteligência analítica e acompanhe o seu diário de looks para nunca perder a sua melhor versão.
                 </p>
               </div>
 
