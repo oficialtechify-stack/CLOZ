@@ -74,31 +74,85 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           throw new Error('Este nome de usuário já está sendo usado por outra pessoa. Escolha outro.');
         }
         
-        // 1. Create firebase user using standard firebase auth
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const uid = userCredential.user.uid;
+        try {
+          // 1. Create firebase user using standard firebase auth
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const uid = userCredential.user.uid;
 
-        // 2. Create clean user profile with NO fake statistics (0 everywhere)
-        const newProfile: UserProfile & { email?: string } = {
-          uid,
-          username: cleanUsername,
-          displayName,
-          avatar,
-          bio: bio || '',
-          location: location || '',
-          followersCount: 0,
-          followingCount: 0,
-          auraScore: 0,
-          totalOutfits: 0,
-          email: email.toLowerCase()
-        };
+          // 2. Create clean user profile with NO fake statistics (0 everywhere) and mark as onboarded since they filled out the full form
+          const newProfile: UserProfile & { email?: string } = {
+            uid,
+            username: cleanUsername,
+            displayName,
+            avatar,
+            bio: bio || '',
+            location: location || '',
+            followersCount: 0,
+            followingCount: 0,
+            auraScore: 0,
+            totalOutfits: 0,
+            email: email.toLowerCase(),
+            onboarded: true
+          };
 
-        // 3. Save profile in Firestore
-        await setDoc(doc(db, 'users', uid), newProfile);
+          // 3. Save profile in Firestore
+          await setDoc(doc(db, 'users', uid), newProfile);
 
-        // Success! Take them to login page pre-filled
-        setSignupSuccess(true);
-        setIsSignUp(false);
+          // Store in local storage for session durability in Sandbox frames
+          localStorage.setItem('cloz_profile', JSON.stringify(newProfile));
+          localStorage.setItem('cloz_user', JSON.stringify({ uid, email: email.toLowerCase() }));
+
+          // Complete login successfully right away!
+          onAuthSuccess(newProfile);
+        } catch (signUpErr: any) {
+          const signUpErrCode = signUpErr.code || '';
+          const signUpErrMsg = signUpErr.message || '';
+          if (signUpErrCode === 'auth/email-already-in-use' || signUpErrMsg.includes('auth/email-already-in-use')) {
+            console.log("Email already in use on signup form. Attempting direct login instead.");
+            // If the email is already in use, attempt to sign in directly with the credentials provided!
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const uid = userCredential.user.uid;
+
+            let loggedInProfile: any = null;
+            try {
+              const userDoc = await getDoc(doc(db, 'users', uid));
+              if (userDoc.exists()) {
+                loggedInProfile = userDoc.data();
+              }
+            } catch (fsErr) {
+              console.warn("Firestore error during fallback login:", fsErr);
+            }
+
+            if (!loggedInProfile) {
+              loggedInProfile = {
+                uid,
+                username: cleanUsername || email.toLowerCase().split('@')[0].replace(/[^a-z0-9_.]/g, ''),
+                displayName: displayName || email.split('@')[0],
+                avatar,
+                bio: bio || '',
+                location: location || '',
+                followersCount: 0,
+                followingCount: 0,
+                auraScore: 0,
+                totalOutfits: 0,
+                email: email.toLowerCase(),
+                onboarded: true
+              };
+              await setDoc(doc(db, 'users', uid), loggedInProfile);
+            } else {
+              if (loggedInProfile.onboarded === undefined || !loggedInProfile.onboarded) {
+                loggedInProfile.onboarded = true;
+                await setDoc(doc(db, 'users', uid), { onboarded: true }, { merge: true });
+              }
+            }
+
+            localStorage.setItem('cloz_profile', JSON.stringify(loggedInProfile));
+            localStorage.setItem('cloz_user', JSON.stringify({ uid, email: email.toLowerCase() }));
+            onAuthSuccess(loggedInProfile);
+          } else {
+            throw signUpErr;
+          }
+        }
       } else {
         // Sign In
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -128,10 +182,17 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
             followingCount: 0,
             auraScore: 0,
             totalOutfits: 0,
-            email: email.toLowerCase()
+            email: email.toLowerCase(),
+            onboarded: true
           };
           // Try to save to Firestore in background, ignore error
           setDoc(doc(db, 'users', uid), loggedInProfile).catch(e => console.warn("Background setDoc failed:", e));
+        } else {
+          // Ensure they are marked onboarded
+          if (loggedInProfile.onboarded === undefined || !loggedInProfile.onboarded) {
+            loggedInProfile.onboarded = true;
+            await setDoc(doc(db, 'users', uid), { onboarded: true }, { merge: true });
+          }
         }
 
         // Store in local storage for session durability in Sandbox frames
@@ -261,10 +322,52 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       if (errMsg.includes('auth/popup-closed-by-user')) {
         setError('O login com Google foi cancelado ou o pop-up foi fechado pelo usuário.');
       } else if (errMsg.includes('auth/popup-blocked')) {
-        setError('O pop-up de login do Google foi bloqueado pelo seu navegador. Por favor, permita pop-ups.');
+        setError('O pop-up de login do Google foi bloqueado pelo seu navegador. Por favor, permita pop-ups ou use o botão "Entrar Instantaneamente (Modo de Teste)" abaixo.');
+      } else if (errMsg.includes('auth/operation-not-supported-in-this-environment') || errMsg.includes('auth/iframe-start-fail') || errMsg.toLowerCase().includes('domain')) {
+        setError('O login do Google não é suportado diretamente dentro do iframe do editor ou este domínio não foi autorizado no Firebase. Por favor, use o botão "Entrar Instantaneamente (Modo de Teste)" abaixo.');
       } else {
-        setError(err.message || 'Erro ao entrar com o Google.');
+        setError('Não foi possível conectar com o Google no iframe de visualização. Por favor, use o botão "Entrar Instantaneamente (Modo de Teste)" abaixo para acessar imediatamente!');
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      const guestUid = `guest_${Math.floor(Math.random() * 1000000)}`;
+      const guestProfile: UserProfile = {
+        uid: guestUid,
+        username: `visitante_${Math.floor(Math.random() * 10000)}`,
+        displayName: 'Visitante Cloz',
+        avatar: avatarsPreset[0],
+        bio: 'Modo de teste do provador inteligente Cloz.',
+        location: 'São Paulo, Brasil',
+        followersCount: 0,
+        followingCount: 0,
+        auraScore: 0,
+        totalOutfits: 0,
+        email: 'visitante@cloz.com'
+      };
+
+      // Try to save to Firestore in background, but don't let it block if offline or permissions fail
+      try {
+        await setDoc(doc(db, 'users', guestUid), guestProfile);
+      } catch (firestoreError) {
+        console.warn("Firestore save failed for guest user, continuing with local session:", firestoreError);
+      }
+
+      // Store in local storage for session durability in Sandbox frames
+      localStorage.setItem('cloz_profile', JSON.stringify(guestProfile));
+      localStorage.setItem('cloz_user', JSON.stringify({ uid: guestProfile.uid, email: guestProfile.email }));
+
+      // Complete login successfully
+      onAuthSuccess(guestProfile);
+    } catch (err: any) {
+      console.error(err);
+      setError('Erro ao entrar no modo de teste.');
     } finally {
       setLoading(false);
     }
@@ -351,6 +454,16 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
           >
             <Mail className="w-4.5 h-4.5 text-white stroke-[2px]" />
             <span>Continuar com E-mail</span>
+          </button>
+
+          {/* Entrar no Modo de Teste / Convidado */}
+          <button
+            type="button"
+            onClick={handleGuestSignIn}
+            className="w-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-white py-3.8 px-6 rounded-full text-[13.5px] font-bold flex items-center justify-center space-x-2.5 transition active:scale-98 shadow-md cursor-pointer text-center"
+          >
+            <Sparkles className="w-4.5 h-4.5 text-emerald-400 stroke-[2px]" />
+            <span>Entrar Instantaneamente (Modo de Teste)</span>
           </button>
         </div>
 

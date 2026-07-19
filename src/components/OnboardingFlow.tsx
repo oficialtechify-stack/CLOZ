@@ -24,8 +24,8 @@ const ONBOARDING_IMAGES = [
 
 export default function OnboardingFlow({ profile, onComplete, onLogout, onLanguageChange }: OnboardingFlowProps) {
   const [step, setStep] = useState(1);
-  const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
+  const [name, setName] = useState(profile?.displayName || '');
+  const [username, setUsername] = useState(profile?.username || '');
   const [usernameError, setUsernameError] = useState('');
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [isUsernameAvailable, setIsUsernameAvailable] = useState(false);
@@ -70,46 +70,57 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
     }
   }, [step]);
 
-  // Check unique username in Firestore
-  const checkUsernameUniqueness = async (val: string) => {
-    const cleanVal = val.trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
+  // Real-time unique username check with Firestore & Debounce
+  useEffect(() => {
+    const cleanVal = username.trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
     if (!cleanVal) {
       setUsernameError('');
       setIsUsernameAvailable(false);
       return;
     }
+
+    if (cleanVal.length < 3) {
+      setUsernameError('O nome de usuário deve ter pelo menos 3 caracteres.');
+      setIsUsernameAvailable(false);
+      return;
+    }
+
     setCheckingUsername(true);
     setUsernameError('');
     setIsUsernameAvailable(false);
 
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('username', '==', cleanVal));
-      const querySnapshot = await getDocs(q);
-      
-      let isTaken = false;
-      querySnapshot.forEach((docSnap) => {
-        if (docSnap.id !== profile.uid) {
-          isTaken = true;
-        }
-      });
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('username', '==', cleanVal));
+        const querySnapshot = await getDocs(q);
+        
+        let isTaken = false;
+        querySnapshot.forEach((docSnap) => {
+          if (docSnap.id !== profile.uid) {
+            isTaken = true;
+          }
+        });
 
-      if (isTaken) {
-        setUsernameError('Este nome de usuário não está disponível');
-        setIsUsernameAvailable(false);
-      } else {
-        setUsernameError('');
-        setIsUsernameAvailable(true);
+        if (isTaken) {
+          setUsernameError('Este nome de usuário já está sendo usado por outra pessoa.');
+          setIsUsernameAvailable(false);
+        } else {
+          setUsernameError('');
+          setIsUsernameAvailable(true);
+        }
+      } catch (err) {
+        console.error("Error checking username uniqueness:", err);
+      } finally {
+        setCheckingUsername(false);
       }
-    } catch (err) {
-      console.error("Error checking username uniqueness:", err);
-    } finally {
-      setCheckingUsername(false);
-    }
-  };
+    }, 400);
+
+    return () => clearTimeout(delayDebounce);
+  }, [username, profile.uid]);
 
   const handleNextUsername = async () => {
-    if (!isUsernameAvailable || usernameError) return;
+    if (!isUsernameAvailable || usernameError || checkingUsername) return;
     setStep(4);
   };
 
@@ -318,7 +329,6 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
                     onChange={(e) => {
                       const clean = e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, '');
                       setUsername(clean);
-                      checkUsernameUniqueness(clean);
                     }}
                     className="w-full bg-neutral-900 border border-neutral-800 focus:border-white focus:ring-1 focus:ring-white rounded-2xl pl-10 pr-5 py-4 text-base outline-none transition font-sans"
                   />
@@ -358,9 +368,9 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
                 </button>
                 
                 <button 
-                  disabled={!isUsernameAvailable || !!usernameError}
+                  disabled={!isUsernameAvailable || !!usernameError || checkingUsername}
                   onClick={handleNextUsername}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isUsernameAvailable && !usernameError ? 'bg-emerald-500 hover:bg-emerald-400 text-black cursor-pointer' : 'bg-neutral-800 text-neutral-500 opacity-60 cursor-not-allowed'}`}
+                  className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${isUsernameAvailable && !usernameError && !checkingUsername ? 'bg-emerald-500 hover:bg-emerald-400 text-black cursor-pointer' : 'bg-neutral-800 text-neutral-500 opacity-60 cursor-not-allowed'}`}
                 >
                   <ArrowRight className="w-6 h-6 stroke-[2.5]" />
                 </button>

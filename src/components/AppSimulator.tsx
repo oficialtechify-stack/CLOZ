@@ -3,11 +3,11 @@ import {
   Heart, MessageCircle, Plus, Search, User, Calendar as CalendarIcon, 
   Bell, Share2, Camera, MapPin, Tag, ExternalLink, ShoppingBag, 
   Filter, ArrowLeft, Trash, PlusCircle, X, DollarSign, Check, ChevronRight, Smartphone, LogOut,
-  Grid, BookOpen, Sparkles, Zap, SlidersHorizontal, Maximize2, Shirt
+  Grid, BookOpen, Sparkles, Zap, SlidersHorizontal, Maximize2, Shirt, Sun, Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Look, ClosetItem, UserProfile, AppNotification, AestheticCategory, TaggedItem } from '../types';
-import { SEED_AESTHETICS, SEED_LOOKS, SEED_CLOSET, SEED_OTHER_USERS, SEED_NOTIFICATIONS } from '../data';
+import { SEED_AESTHETICS } from '../data';
 import { auth, db } from '../lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { 
@@ -178,6 +178,57 @@ const getCountryFromLocation = (loc: string): string => {
   return loc;
 };
 
+const compressImageBase64 = (base64Str: string, maxDim: number = 800, quality: number = 0.75): Promise<string> => {
+  return new Promise((resolve) => {
+    if (!base64Str || !base64Str.startsWith('data:')) {
+      resolve(base64Str);
+      return;
+    }
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width;
+      let h = img.height;
+      
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(base64Str);
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => {
+      resolve(base64Str);
+    };
+  });
+};
+
+const safeWrite = async <T extends unknown>(promise: Promise<T>, ms: number = 1500): Promise<void> => {
+  try {
+    await Promise.race([
+      promise,
+      new Promise<void>((resolve) => setTimeout(resolve, ms))
+    ]);
+  } catch (err) {
+    console.warn("Firestore write error or timeout, continuing with local cache:", err);
+  }
+};
+
 const COUNTRIES_LIST = [
   { name: 'Brasil', emoji: '🇧🇷' },
   { name: 'EUA', emoji: '🇺🇸' },
@@ -203,12 +254,16 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
   const [likingLooks, setLikingLooks] = useState<Record<string, boolean>>({});
   const [leaderboardCountry, setLeaderboardCountry] = useState<string>('Brasil');
   const videoRef = React.useRef<HTMLVideoElement>(null);
+  const avatarFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('cloz_theme') === 'dark';
+  });
 
   const [looks, setLooks] = useState<Look[]>([]);
   const [closet, setCloset] = useState<ClosetItem[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [activeTab, setActiveTab] = useState<'feed' | 'explore' | 'add' | 'notifications' | 'profile'>('feed');
-  const [feedSubTab, setFeedSubTab] = useState<'recent' | 'aura' | 'following'>('recent');
+  const [feedSubTab, setFeedSubTab] = useState<'recent' | 'community' | 'following'>('recent');
 
   // Real-time Weather Forecast state with precise default mock values mirroring the screenshot
   const [weatherForecast, setWeatherForecast] = useState<Record<number, { icon: string; tempMax: number; tempMin: number }>>({
@@ -1027,16 +1082,32 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = videoElement.videoWidth || 600;
-      canvas.height = videoElement.videoHeight || 800;
+      const videoW = videoElement.videoWidth || 600;
+      const videoH = videoElement.videoHeight || 800;
+      
+      const maxDim = 800;
+      let targetW = videoW;
+      let targetH = videoH;
+      if (videoW > maxDim || videoH > maxDim) {
+        if (videoW > videoH) {
+          targetH = Math.round((videoH * maxDim) / videoW);
+          targetW = maxDim;
+        } else {
+          targetW = Math.round((videoW * maxDim) / videoH);
+          targetH = maxDim;
+        }
+      }
+
+      canvas.width = targetW;
+      canvas.height = targetH;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         if (facingMode === 'user') {
           ctx.translate(canvas.width, 0);
           ctx.scale(-1, 1);
         }
-        ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        ctx.drawImage(videoElement, 0, 0, targetW, targetH);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
         setLookImage(dataUrl);
         stopCamera();
       }
@@ -1254,6 +1325,21 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         if (unsubscribeProfile) {
           unsubscribeProfile();
           unsubscribeProfile = null;
+        }
+        // If it is a guest profile, do not wipe it
+        const storedProfileStr = localStorage.getItem('cloz_profile');
+        if (storedProfileStr) {
+          try {
+            const storedProfile = JSON.parse(storedProfileStr);
+            if (storedProfile && storedProfile.uid && storedProfile.uid.startsWith('guest_')) {
+              setCurrentUser({ uid: storedProfile.uid, email: storedProfile.email });
+              setProfile(storedProfile);
+              setAuthLoading(false);
+              return;
+            }
+          } catch (e) {
+            console.error("Failed to parse guest profile in auth callback:", e);
+          }
         }
         setCurrentUser(null);
         setProfile(null);
@@ -1566,10 +1652,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
       };
 
       // Save look in Firestore
-      await setDoc(doc(db, 'looks', lookId), {
+      await safeWrite(setDoc(doc(db, 'looks', lookId), {
         ...newLook,
         comments: []
-      });
+      }));
 
       setAnalysisStep('Adicionando peças ao seu armário digital...');
 
@@ -1595,7 +1681,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
           timesWorn: 1,
           costPerWear: tag.price
         };
-        await setDoc(doc(db, 'closet', itemId), newItem);
+        await safeWrite(setDoc(doc(db, 'closet', itemId), newItem));
       }
 
       setAnalysisStep('Finalizado com sucesso!');
@@ -1769,6 +1855,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         profile={profile}
         onComplete={(updatedProfile) => {
           setProfile(updatedProfile);
+          localStorage.setItem('cloz_profile', JSON.stringify(updatedProfile));
           setActiveTab('profile');
         }}
         onLogout={handleLogout}
@@ -1780,13 +1867,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
   }
 
   return (
-    <div className="bg-[#FAF9F6] text-[#171717] min-h-screen font-sans flex flex-col">
+    <div className={`min-h-screen font-sans flex flex-col transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A] text-neutral-100' : 'bg-[#FAF9F6] text-[#171717]'}`}>
       {/* Real Responsive Web Header */}
-      <header className="sticky top-0 bg-white/90 backdrop-blur z-40 border-b border-gray-200/50 flex items-center justify-between px-6 h-16 shadow-2xs">
+      <header className={`sticky top-0 backdrop-blur z-40 border-b flex items-center justify-between px-6 h-16 shadow-2xs transition-colors duration-200 ${darkMode ? 'bg-neutral-900/90 border-neutral-800' : 'bg-white/90 border-gray-200/50'}`}>
         <div className="flex items-center space-x-6">
           <button 
             onClick={() => { setActiveTab('feed'); setSelectedLook(null); setSelectedItem(null); }}
-            className="font-display font-extrabold text-xl tracking-tight hover:opacity-80 transition cursor-pointer"
+            className={`font-display font-extrabold text-xl tracking-tight hover:opacity-80 transition cursor-pointer ${darkMode ? 'text-white' : 'text-[#171717]'}`}
           >
             Cloz
           </button>
@@ -1796,28 +1883,28 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         <div className="hidden md:flex items-center space-x-6 text-xs font-semibold">
           <button 
             onClick={() => { setActiveTab('feed'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'feed' ? 'text-black font-bold' : 'text-gray-400'}`}
+            className={`${darkMode ? 'hover:text-white' : 'hover:text-black'} transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'feed' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : 'text-gray-400'}`}
           >
             <BookOpen className="w-4 h-4" />
             <span>Feed</span>
           </button>
           <button 
             onClick={() => { setActiveTab('explore'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'explore' ? 'text-black font-bold' : 'text-gray-400'}`}
+            className={`${darkMode ? 'hover:text-white' : 'hover:text-black'} transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'explore' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : 'text-gray-400'}`}
           >
             <Grid className="w-4 h-4" />
             <span>Explorar</span>
           </button>
           <button 
             onClick={() => { setActiveTab('add'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'add' ? 'text-black font-bold' : 'text-gray-400'}`}
+            className={`${darkMode ? 'hover:text-white' : 'hover:text-black'} transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'add' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : 'text-gray-400'}`}
           >
-            <span className="w-5 h-5 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs">+</span>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-xs ${darkMode ? 'bg-white text-black' : 'bg-black text-white'}`}>+</span>
             <span>Postar Look</span>
           </button>
           <button 
             onClick={() => { setActiveTab('notifications'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 relative ${activeTab === 'notifications' ? 'text-black font-bold' : 'text-gray-400'}`}
+            className={`${darkMode ? 'hover:text-white' : 'hover:text-black'} transition cursor-pointer flex items-center space-x-1.5 relative ${activeTab === 'notifications' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : 'text-gray-400'}`}
           >
             <Bell className="w-4 h-4" />
             <span>Notificações</span>
@@ -1829,7 +1916,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
           </button>
           <button 
             onClick={() => { setActiveTab('profile'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`hover:text-black transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'profile' ? 'text-black font-bold' : 'text-gray-400'}`}
+            className={`${darkMode ? 'hover:text-white' : 'hover:text-black'} transition cursor-pointer flex items-center space-x-1.5 ${activeTab === 'profile' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : 'text-gray-400'}`}
           >
             <User className="w-4 h-4" />
             <span>Perfil</span>
@@ -1837,9 +1924,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         </div>
 
         <div className="flex items-center space-x-4">
-          <div className="hidden sm:flex items-center space-x-2 bg-[#171717]/5 px-3 py-1.5 rounded-full text-xs font-mono">
+          <div className={`hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-mono transition-colors ${darkMode ? 'bg-white/10' : 'bg-[#171717]/5'}`}>
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="font-bold text-gray-800">+{profile.auraScore} Aura</span>
+            <span className={`font-bold ${darkMode ? 'text-neutral-200' : 'text-gray-800'}`}>+{profile.auraScore} Aura</span>
           </div>
           <button 
             onClick={handleLogout}
@@ -1855,78 +1942,75 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
       <div className="flex-1 w-full max-w-3xl mx-auto px-4 py-8 flex flex-col gap-8">
         
         {/* Dynamic Content Frame */}
-        <div className="flex-1 bg-white rounded-3xl border border-gray-200/50 p-6 shadow-2xs flex flex-col relative overflow-hidden">
+        <div className={`flex-1 rounded-3xl border p-6 shadow-2xs flex flex-col relative overflow-hidden transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-200/50 text-[#171717]'}`}>
           <div className="flex-1 flex flex-col">
             
             {/* 1. FEED VIEW */}
             {activeTab === 'feed' && (
               <div className="flex-1 flex flex-col animate-fadeIn">
                 {/* Header and Feed Selector */}
-                <div className="sticky top-0 bg-white/95 backdrop-blur z-20 pb-3 pt-2.5 border-b border-gray-100 flex items-center justify-between px-3">
+                <div className={`sticky top-0 backdrop-blur z-20 pb-3 pt-2.5 border-b flex items-center justify-between px-3 ${darkMode ? 'bg-neutral-900/95 border-neutral-800' : 'bg-white/95 border-gray-100'}`}>
                   {/* Minimalist circular logo from the screenshots */}
-                  <div className="w-7 h-7 rounded-full border border-black/80 flex items-center justify-center shrink-0">
-                    <div className="w-3.5 h-[1.5px] bg-black/80 rotate-45"></div>
+                  <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 ${darkMode ? 'border-white/80' : 'border-black/80'}`}>
+                    <div className={`w-3.5 h-[1.5px] rotate-45 ${darkMode ? 'bg-white/80' : 'bg-black/80'}`}></div>
                   </div>
 
                   {/* Central Navigation Tabs with bottom underline */}
                   <div className="flex items-center space-x-6 text-sm">
                     <button 
                       onClick={() => setFeedSubTab('recent')} 
-                      className={`pb-1 relative transition-all cursor-pointer ${feedSubTab === 'recent' ? 'text-black font-extrabold' : 'text-gray-400 font-medium'}`}
+                      className={`pb-1 relative transition-all cursor-pointer ${feedSubTab === 'recent' ? (darkMode ? 'text-white font-extrabold' : 'text-black font-extrabold') : 'text-gray-400 font-medium'}`}
                     >
                       <span>Recente</span>
                       {feedSubTab === 'recent' && (
-                        <span className="absolute bottom-[-13px] inset-x-0 h-[2.5px] bg-black rounded-full"></span>
+                        <span className={`absolute bottom-[-13px] inset-x-0 h-[2.5px] rounded-full ${darkMode ? 'bg-white' : 'bg-black'}`}></span>
                       )}
                     </button>
                     <button 
-                      onClick={() => setFeedSubTab('aura')} 
-                      className={`pb-1 relative transition-all cursor-pointer ${feedSubTab === 'aura' ? 'text-black font-extrabold' : 'text-gray-400 font-medium'}`}
+                      onClick={() => setFeedSubTab('community')} 
+                      className={`pb-1 relative transition-all cursor-pointer ${feedSubTab === 'community' ? (darkMode ? 'text-white font-extrabold' : 'text-black font-extrabold') : 'text-gray-400 font-medium'}`}
                     >
-                      <span>Aura</span>
-                      {feedSubTab === 'aura' && (
-                        <span className="absolute bottom-[-13px] inset-x-0 h-[2.5px] bg-black rounded-full"></span>
+                      <span>Comunidade</span>
+                      {feedSubTab === 'community' && (
+                        <span className={`absolute bottom-[-13px] inset-x-0 h-[2.5px] rounded-full ${darkMode ? 'bg-white' : 'bg-black'}`}></span>
                       )}
                     </button>
                     <button 
                       onClick={() => setFeedSubTab('following')} 
-                      className={`pb-1 relative transition-all cursor-pointer ${feedSubTab === 'following' ? 'text-black font-extrabold' : 'text-gray-400 font-medium'}`}
+                      className={`pb-1 relative transition-all cursor-pointer ${feedSubTab === 'following' ? (darkMode ? 'text-white font-extrabold' : 'text-black font-extrabold') : 'text-gray-400 font-medium'}`}
                     >
                       <span>Seguindo</span>
                       {feedSubTab === 'following' && (
-                        <span className="absolute bottom-[-13px] inset-x-0 h-[2.5px] bg-black rounded-full"></span>
+                        <span className={`absolute bottom-[-13px] inset-x-0 h-[2.5px] rounded-full ${darkMode ? 'bg-white' : 'bg-black'}`}></span>
                       )}
                     </button>
                   </div>
 
-                  {/* Right Status (Aura points in a lightning bolt design) */}
-                  <div className="flex items-center space-x-1 font-mono text-[11px] font-bold bg-[#171717]/5 px-2.5 py-1 rounded-full text-gray-800 shrink-0">
-                    <Zap className="w-3.5 h-3.5 text-black fill-black" />
-                    <span>{profile.auraScore}</span>
-                  </div>
+                  {/* Empty spacer or simple layout helper to keep space balanced */}
+                  <div className="w-7"></div>
                 </div>
 
-                {/* Aura Announcement banner */}
-                {feedSubTab === 'aura' ? (
-                  <div className="m-3 bg-amber-50/30 p-3.5 rounded-2xl border border-amber-200/40 flex flex-col gap-1 text-left animate-fadeIn">
-                    <div className="flex items-center space-x-1.5 text-[10px] font-mono text-amber-700 uppercase tracking-wider font-bold">
-                      <span>🏆 RANKING DE AURA • {leaderboardCountry.toUpperCase()}</span>
+                {/* Community Announcement banner */}
+                {feedSubTab === 'community' ? (
+                  <div className={`m-3 p-3.5 rounded-2xl border flex flex-col gap-1 text-left animate-fadeIn ${darkMode ? 'bg-neutral-850/40 border-neutral-800' : 'bg-neutral-50 border-neutral-150'}`}>
+                    <div className={`flex items-center space-x-1.5 text-[10px] font-mono uppercase tracking-wider font-bold ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
+                      <span>👥 CURADORES E CRIADORES DE TENDÊNCIA</span>
                     </div>
-                    <p className="text-[11px] text-gray-700 leading-snug">
-                      Veja os maiores curadores de moda e criadores de tendência do país. Acumule curtidas e inspire a comunidade para subir no ranking!
+                    <p className={`text-[11px] leading-snug ${darkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
+                      Conecte-se com membros reais da nossa comunidade de moda autoral. Explore looks, siga criadores e compartilhe seu closet.
                     </p>
                   </div>
                 ) : null}
 
                 {/* Filters Row */}
-                {feedSubTab !== 'aura' && (
-                  <div className="flex items-center justify-between px-3.5 py-1.5 text-[11px] font-bold text-gray-500 animate-fadeIn">
-                    <button className="flex items-center space-x-1.5 bg-neutral-100/60 hover:bg-neutral-100 px-3 py-1.5 rounded-full border border-transparent hover:border-gray-200 transition cursor-pointer">
+                {feedSubTab !== 'community' && (
+                  <div className={`flex items-center justify-between px-3.5 py-1.5 text-[11px] font-bold animate-fadeIn ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
+                    <button className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition cursor-pointer ${darkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-750' : 'bg-neutral-100/60 hover:bg-neutral-100 border-transparent hover:border-gray-200'}`}>
                       <span>🇧🇷</span>
                       <span>Brazil</span>
                       <span className="text-[8px] text-gray-400">↕</span>
                     </button>
-                    <button className="flex items-center space-x-1.5 bg-neutral-100/60 hover:bg-neutral-100 px-3 py-1.5 rounded-full border border-transparent hover:border-gray-200 transition cursor-pointer">
+                    <button className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition cursor-pointer ${darkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-750' : 'bg-neutral-100/60 hover:bg-neutral-100 border-transparent hover:border-gray-200'}`}>
                       <SlidersHorizontal className="w-3.5 h-3.5 text-gray-400" />
                       <span>Todos os Andares</span>
                       <span className="text-[8px] text-gray-400">↕</span>
@@ -1936,7 +2020,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* Looks Feed List */}
                 <div className="space-y-4 px-3 pb-6">
-                  {feedSubTab === 'aura' ? (
+                  {feedSubTab === 'community' ? (
                     <div className="space-y-4 text-left animate-fadeIn">
                       {/* Country scrolling selector */}
                       <div className="flex space-x-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -1946,8 +2030,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             onClick={() => setLeaderboardCountry(country.name)}
                             className={`px-3 py-1.5 rounded-full text-[10px] font-bold whitespace-nowrap transition-all border shrink-0 flex items-center space-x-1 ${
                               leaderboardCountry === country.name
-                                ? 'bg-black border-black text-white shadow-xs'
-                                : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+                                ? (darkMode ? 'bg-white border-white text-black font-extrabold' : 'bg-black border-black text-white shadow-xs')
+                                : (darkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-neutral-750' : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-neutral-100')
                             }`}
                           >
                             <span>{country.emoji}</span>
@@ -1957,14 +2041,19 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       </div>
 
                       {/* Leaderboard List */}
-                      <div className="bg-neutral-50/50 rounded-3xl p-2.5 border border-gray-100 space-y-2">
+                      <div className={`rounded-3xl p-2.5 border space-y-2 ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-neutral-50/50 border-gray-100'}`}>
                         {(() => {
                           const filteredUsers = allUsers.filter(u => {
                             if (leaderboardCountry === 'Todos') return true;
                             return getCountryFromLocation(u.location) === leaderboardCountry;
                           });
 
-                          const sortedLeaderboard = [...filteredUsers].sort((a, b) => (b.auraScore || 0) - (a.auraScore || 0));
+                          // Real ranking based on actual looks uploaded by user
+                          const sortedLeaderboard = [...filteredUsers].sort((a, b) => {
+                            const countA = looks.filter(l => l.userId === a.uid).length;
+                            const countB = looks.filter(l => l.userId === b.uid).length;
+                            return countB - countA;
+                          });
 
                           if (sortedLeaderboard.length === 0) {
                             return (
@@ -1977,27 +2066,28 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           return sortedLeaderboard.map((user, idx) => {
                             const isCurrentUser = profile && user.uid === profile.uid;
                             const rank = idx + 1;
+                            const userLooksCount = looks.filter(l => l.userId === user.uid).length;
                             
                             let rankBadge = (
-                              <span className="w-5 h-5 flex items-center justify-center rounded-full bg-neutral-200 text-neutral-700 text-[10px] font-mono font-bold shrink-0">
+                              <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-mono font-bold shrink-0 ${darkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-200 text-neutral-700'}`}>
                                 {rank}
                               </span>
                             );
                             if (rank === 1) {
                               rankBadge = (
-                                <span className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-100 border border-amber-300 text-amber-700 text-[10px] font-bold shrink-0">
+                                <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${darkMode ? 'bg-amber-950/40 border border-amber-800 text-amber-300' : 'bg-amber-100 border border-amber-300 text-amber-700'}`}>
                                   👑
                                 </span>
                               );
                             } else if (rank === 2) {
                               rankBadge = (
-                                <span className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 border border-slate-300 text-slate-700 text-[10px] font-bold shrink-0">
+                                <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${darkMode ? 'bg-slate-900 border border-slate-700 text-slate-300' : 'bg-slate-100 border border-slate-300 text-slate-700'}`}>
                                   🥈
                                 </span>
                               );
                             } else if (rank === 3) {
                               rankBadge = (
-                                <span className="w-5 h-5 flex items-center justify-center rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold shrink-0">
+                                <span className={`w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${darkMode ? 'bg-amber-950/20 border border-amber-900/40 text-amber-500' : 'bg-amber-50 border border-amber-200 text-amber-800'}`}>
                                   🥉
                                 </span>
                               );
@@ -2008,8 +2098,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                 key={user.uid}
                                 className={`flex items-center justify-between p-2 rounded-2xl border transition-all ${
                                   isCurrentUser 
-                                    ? 'bg-emerald-50/40 border-emerald-100 shadow-xs' 
-                                    : 'bg-white border-gray-100 hover:border-gray-200'
+                                    ? (darkMode ? 'bg-emerald-950/20 border-emerald-900/60 shadow-xs' : 'bg-emerald-50/40 border-emerald-100 shadow-xs') 
+                                    : (darkMode ? 'bg-neutral-850/60 border-neutral-800/80 hover:border-neutral-700' : 'bg-white border-gray-100 hover:border-gray-200')
                                 }`}
                               >
                                 <div className="flex items-center space-x-2.5 min-w-0">
@@ -2017,7 +2107,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                   <div className="relative shrink-0">
                                     <img 
                                       src={user.avatar} 
-                                      className="w-8.5 h-8.5 rounded-full object-cover border border-gray-100" 
+                                      className={`w-8.5 h-8.5 rounded-full object-cover border ${darkMode ? 'border-neutral-800' : 'border-gray-100'}`} 
                                       alt="avatar" 
                                     />
                                     {isCurrentUser && (
@@ -2026,11 +2116,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                   </div>
                                   <div className="text-left min-w-0">
                                     <div className="flex items-center space-x-1">
-                                      <span className="text-xs font-bold text-gray-800 truncate block">
+                                      <span className={`text-xs font-bold truncate block ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                                         {user.displayName}
-                                      </span>
-                                      <span className="text-[8px] font-mono font-bold text-gray-400 bg-neutral-100 px-1 py-0.2 rounded shrink-0">
-                                        Lv.{Math.floor((user.auraScore || 0) / 10) + 1}
                                       </span>
                                     </div>
                                     <span className="text-[10px] text-gray-400 block font-light truncate">
@@ -2040,11 +2127,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                 </div>
 
                                 <div className="text-right shrink-0">
-                                  <span className="text-xs font-bold font-mono text-emerald-600 block">
-                                    +{user.auraScore || 0}
+                                  <span className={`text-xs font-bold font-mono block ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                    {userLooksCount}
                                   </span>
                                   <span className="text-[8px] uppercase tracking-wider text-gray-400 block font-mono font-bold">
-                                    Aura
+                                    {userLooksCount === 1 ? 'Look' : 'Looks'}
                                   </span>
                                 </div>
                               </div>
@@ -2457,9 +2544,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                               const file = e.target.files?.[0];
                               if (file) {
                                 const reader = new FileReader();
-                                reader.onloadend = () => {
+                                reader.onloadend = async () => {
                                   if (typeof reader.result === 'string') {
-                                    setLookImage(reader.result);
+                                    const compressed = await compressImageBase64(reader.result);
+                                    setLookImage(compressed);
                                   }
                                 };
                                 reader.readAsDataURL(file);
@@ -2584,20 +2672,20 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
             {/* 5. PROFILE VIEW */}
             {activeTab === 'profile' && (
-              <div className="flex-1 flex flex-col animate-fadeIn text-left bg-[#FAF9F6] h-full overflow-hidden">
+              <div className={`flex-1 flex flex-col animate-fadeIn text-left h-full overflow-hidden transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                 
                 {/* --- 1. SETTINGS: MAIN SCREEN --- */}
                 {settingsScreen === 'main' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen(null)} 
-                        className="p-1.5 -ml-1 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                        className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}
                       >
-                        <ArrowLeft className="w-5 h-5 text-gray-800" />
+                        <ArrowLeft className={`w-5 h-5 ${darkMode ? 'text-white' : 'text-gray-800'}`} />
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('settings')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('settings')}</span>
                       <div className="w-8"></div> {/* Spacer for symmetry */}
                     </div>
 
@@ -2606,36 +2694,36 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       {/* Card 1: User Edit Row */}
                       <div 
                         onClick={() => setSettingsScreen('edit_profile')}
-                        className="bg-white rounded-2xl p-4 flex items-center justify-between border border-gray-100 shadow-3xs cursor-pointer hover:bg-neutral-50/40 transition"
+                        className={`p-4 flex items-center justify-between border shadow-3xs cursor-pointer rounded-2xl transition-all ${darkMode ? 'bg-neutral-900 border-neutral-800 hover:bg-neutral-800/40' : 'bg-white border-gray-100 hover:bg-neutral-50/40'}`}
                       >
                         <div className="flex items-center space-x-3.5">
-                          <img src={profile.avatar} className="w-11 h-11 rounded-full object-cover border border-neutral-100 shadow-3xs" alt="avatar" />
+                          <img src={profile.avatar} className={`w-11 h-11 rounded-full object-cover border shadow-3xs ${darkMode ? 'border-neutral-800' : 'border-neutral-100'}`} alt="avatar" />
                           <div>
-                            <p className="text-xs font-bold text-gray-800 leading-none">{profile.name || profile.displayName || ''}</p>
-                            <p className="text-[10px] text-gray-400 font-medium mt-1">{t('editProfile')}</p>
+                            <p className={`text-xs font-bold leading-none ${darkMode ? 'text-white' : 'text-gray-800'}`}>{profile.name || profile.displayName || ''}</p>
+                            <p className={`text-[10px] font-medium mt-1 ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('editProfile')}</p>
                           </div>
                         </div>
                         <ChevronRight className="w-4 h-4 text-gray-400" />
                       </div>
 
                       {/* Card 2: Automatic Closet Pieces toggle */}
-                      <div className="bg-white rounded-2xl p-4 flex items-center justify-between border border-gray-100 shadow-3xs">
+                      <div className={`p-4 flex items-center justify-between border shadow-3xs rounded-2xl transition ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                         <div className="space-y-0.5 max-w-[75%] text-left">
-                          <p className="text-xs font-bold text-gray-800">{t('createPieces')}</p>
-                          <p className="text-[10px] text-gray-400 leading-normal">{t('createPiecesSub')}</p>
+                          <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t('createPieces')}</p>
+                          <p className={`text-[10px] leading-normal ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('createPiecesSub')}</p>
                         </div>
                         {/* Custom visual switch */}
                         <button
                           onClick={() => setCriarPecas(!criarPecas)}
-                          className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${criarPecas ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                          className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${criarPecas ? 'bg-[#1E3F20]' : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                         >
                           <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${criarPecas ? 'translate-x-4.5' : 'translate-x-0'}`} />
                         </button>
                       </div>
 
                       {/* Card 3: Red border "PRIMEIROS PASSOS" exactly matching screenshot */}
-                      <div className="border border-red-500/80 bg-red-50/15 rounded-2xl p-4 space-y-3.5">
-                        <p className="text-[10px] font-bold text-red-600 tracking-wider font-mono">🔴 {t('firstSteps')} · 2/3</p>
+                      <div className={`border rounded-2xl p-4 space-y-3.5 transition-colors duration-200 ${darkMode ? 'border-red-900/60 bg-red-950/10' : 'border-red-500/80 bg-red-50/15'}`}>
+                        <p className={`text-[10px] font-bold tracking-wider font-mono ${darkMode ? 'text-red-400' : 'text-red-600'}`}>🔴 {t('firstSteps')} · 2/3</p>
                         
                         <div className="space-y-3">
                           {/* Row 1: Poste 3 looks (Completed) */}
@@ -2645,10 +2733,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
                             </div>
-                            <span className="text-xs font-medium text-gray-600 line-through decoration-gray-300">{t('postLooks')}</span>
+                            <span className={`text-xs font-medium line-through ${darkMode ? 'text-neutral-500 decoration-neutral-700' : 'text-gray-600 decoration-gray-300'}`}>{t('postLooks')}</span>
                           </div>
 
-                          <div className="border-b border-red-100/40" />
+                          <div className={`border-b ${darkMode ? 'border-neutral-800/40' : 'border-red-100/40'}`} />
 
                           {/* Row 2: Convide um amigo (Pending clickable) */}
                           <div 
@@ -2659,13 +2747,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             className="flex items-center justify-between cursor-pointer group"
                           >
                             <div className="flex items-center space-x-3">
-                              <div className="w-4 h-4 rounded-full border border-gray-300 shrink-0" />
-                              <span className="text-xs font-bold text-gray-800 group-hover:text-black transition">{t('inviteFriend')}</span>
+                              <div className={`w-4 h-4 rounded-full border shrink-0 ${darkMode ? 'border-neutral-700' : 'border-gray-300'}`} />
+                              <span className={`text-xs font-bold transition ${darkMode ? 'text-neutral-300 group-hover:text-white' : 'text-gray-800 group-hover:text-black'}`}>{t('inviteFriend')}</span>
                             </div>
                             <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
                           </div>
 
-                          <div className="border-b border-red-100/40" />
+                          <div className={`border-b ${darkMode ? 'border-neutral-800/40' : 'border-red-100/40'}`} />
 
                           {/* Row 3: Adicione uma foto de perfil (Completed) */}
                           <div className="flex items-center space-x-3">
@@ -2674,25 +2762,25 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
                             </div>
-                            <span className="text-xs font-medium text-gray-600 line-through decoration-gray-300">{t('addProfilePhoto')}</span>
+                            <span className={`text-xs font-medium line-through ${darkMode ? 'text-neutral-500 decoration-neutral-700' : 'text-gray-600 decoration-gray-300'}`}>{t('addProfilePhoto')}</span>
                           </div>
                         </div>
                       </div>
 
                       {/* Section: CONTA */}
                       <div className="space-y-1.5">
-                        <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase ml-1.5">{t('account')}</p>
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden divide-y divide-gray-50">
+                        <p className={`text-[10px] font-bold tracking-wider uppercase ml-1.5 ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>{t('account')}</p>
+                        <div className={`rounded-2xl border shadow-3xs overflow-hidden divide-y transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 divide-neutral-800/60' : 'bg-white border-gray-100 divide-gray-50'}`}>
                           {/* Row 1: Privacidade */}
                           <div 
                             onClick={() => setSettingsScreen('privacy')}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
                           >
                             <div className="flex items-center space-x-3">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                               </svg>
-                              <span className="text-xs font-semibold text-gray-700">{t('privacy')}</span>
+                              <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('privacy')}</span>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
@@ -2700,13 +2788,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           {/* Row 2: Usuários Bloqueados */}
                           <div 
                             onClick={() => setSettingsScreen('blocked')}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
                           >
                             <div className="flex items-center space-x-3">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                               </svg>
-                              <span className="text-xs font-semibold text-gray-700">{t('blockedUsers')}</span>
+                              <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('blockedUsers')}</span>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
@@ -2715,18 +2803,18 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                       {/* Section: PREFERÊNCIAS */}
                       <div className="space-y-1.5">
-                        <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase ml-1.5">{t('preferences')}</p>
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden divide-y divide-gray-50">
+                        <p className={`text-[10px] font-bold tracking-wider uppercase ml-1.5 ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>{t('preferences')}</p>
+                        <div className={`rounded-2xl border shadow-3xs overflow-hidden divide-y transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 divide-neutral-800/60' : 'bg-white border-gray-100 divide-gray-50'}`}>
                           {/* Row 1: Notificações */}
                           <div 
                             onClick={() => setSettingsScreen('notifications')}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
                           >
                             <div className="flex items-center space-x-3">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                               </svg>
-                              <span className="text-xs font-semibold text-gray-700">{t('notifications')}</span>
+                              <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('notifications')}</span>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
@@ -2734,36 +2822,72 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           {/* Row 2: Idioma */}
                           <div 
                             onClick={() => setSettingsScreen('language')}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
                           >
                             <div className="flex items-center space-x-3">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
                               </svg>
                               <div className="text-left">
-                                <span className="text-xs font-semibold text-gray-700 block">{t('language')}</span>
+                                <span className={`text-xs font-semibold block ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('language')}</span>
                                 <span className="text-[9px] text-gray-400">{language}</span>
                               </div>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
+                          </div>
+
+                          {/* Row 3: Tema */}
+                          <div 
+                            onClick={() => {
+                              const newMode = !darkMode;
+                              setDarkMode(newMode);
+                              localStorage.setItem('cloz_theme', newMode ? 'dark' : 'light');
+                            }}
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              {darkMode ? (
+                                <Sun className="w-4 h-4 text-amber-500" />
+                              ) : (
+                                <Moon className="w-4 h-4 text-indigo-500" />
+                              )}
+                              <div className="text-left">
+                                <span className={`text-xs font-semibold block ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>Tema</span>
+                                <span className={`text-[9px] ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>
+                                  {darkMode ? 'Escuro' : 'Claro'}
+                                </span>
+                              </div>
+                            </div>
+                            {/* Toggle switch for visual premium feeling */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newMode = !darkMode;
+                                setDarkMode(newMode);
+                                localStorage.setItem('cloz_theme', newMode ? 'dark' : 'light');
+                              }}
+                              className={`relative inline-flex h-5 w-8.5 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${darkMode ? 'bg-amber-500' : 'bg-neutral-200'}`}
+                            >
+                              <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${darkMode ? 'translate-x-3.5' : 'translate-x-0'}`} />
+                            </button>
                           </div>
                         </div>
                       </div>
 
                       {/* Section: SOBRE */}
                       <div className="space-y-1.5">
-                        <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase ml-1.5">{t('aboutSection')}</p>
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden divide-y divide-gray-50">
+                        <p className={`text-[10px] font-bold tracking-wider uppercase ml-1.5 ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>{t('aboutSection')}</p>
+                        <div className={`rounded-2xl border shadow-3xs overflow-hidden divide-y transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 divide-neutral-800/60' : 'bg-white border-gray-100 divide-gray-50'}`}>
                           {/* Row 1: Comunidade */}
                           <div 
                             onClick={() => alert("Entrando na Comunidade Cloz no Discord!")}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
                           >
                             <div className="flex items-center space-x-3">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
                               </svg>
-                              <span className="text-xs font-semibold text-gray-700">{t('community')}</span>
+                              <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('community')}</span>
                             </div>
                             <span className="text-xs text-gray-400">↗</span>
                           </div>
@@ -2771,14 +2895,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           {/* Row 2: Play Store */}
                           <div 
                             onClick={() => alert("Link da Play Store!")}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
                           >
                             <div className="flex items-center space-x-3">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
-                              <span className="text-xs font-semibold text-gray-700">{t('playStore')}</span>
+                              <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('playStore')}</span>
                             </div>
                             <span className="text-xs text-gray-400">↗</span>
                           </div>
@@ -2786,13 +2910,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           {/* Row 3: Atualizar app */}
                           <div 
                             onClick={() => alert("Seu app já está na versão mais recente!")}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/50' : 'hover:bg-neutral-50/50'}`}
                           >
                             <div className="flex items-center space-x-3">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.5" />
                               </svg>
-                              <span className="text-xs font-semibold text-gray-700">{t('updateApp')}</span>
+                              <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('updateApp')}</span>
                             </div>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
@@ -2804,16 +2928,16 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* --- 2. SETTINGS: EDIT PROFILE SCREEN --- */}
                 {settingsScreen === 'edit_profile' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn text-left">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn text-left transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen('main')} 
-                        className="text-xs font-semibold text-gray-500 hover:text-black transition"
+                        className={`text-xs font-semibold hover:text-black transition ${darkMode ? 'text-neutral-400 hover:text-white' : 'text-gray-500'}`}
                       >
                         {t('cancel')}
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('editProfile')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('editProfile')}</span>
                       <button 
                         onClick={async () => {
                           if (!profile) return;
@@ -2845,6 +2969,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           const updated = {
                             ...profile,
                             name: editName,
+                            displayName: editName || profile.displayName || '',
                             username: cleanUsername,
                             bio: editBio,
                             location: editLocation,
@@ -2855,16 +2980,19 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           setProfile(updated);
                           localStorage.setItem('cloz_profile', JSON.stringify(updated));
 
+                          // Update local allUsers immediately so Leaderboard and other sections reflect changes instantly
+                          setAllUsers(prev => prev.map(u => u.uid === profile.uid ? updated : u));
+
                           // Try to update Firestore in background/gracefully
                           try {
-                            await setDoc(doc(db, 'users', profile.uid), updated);
+                            await safeWrite(setDoc(doc(db, 'users', profile.uid), updated, { merge: true }));
                           } catch (err) {
                             console.warn("Could not save profile to Firestore immediately (will sync when online):", err);
                           }
 
                           setSettingsScreen('main');
                         }}
-                        className="text-xs font-bold text-[#1E3F20]"
+                        className={`text-xs font-bold ${darkMode ? 'text-emerald-400' : 'text-[#1E3F20]'}`}
                       >
                         {t('save')}
                       </button>
@@ -2873,61 +3001,92 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     {/* Form Scrollable */}
                     <div className="flex-1 overflow-y-auto p-5 space-y-4 pb-20 text-left">
                       {profileEditError && (
-                        <div className="bg-red-50 text-red-600 text-[11px] p-3 rounded-2xl border border-red-100 mb-2">
+                        <div className={`text-[11px] p-3 rounded-2xl border mb-2 ${darkMode ? 'bg-red-950/20 text-red-400 border-red-900/50' : 'bg-red-50 text-red-600 border-red-100'}`}>
                           {profileEditError}
                         </div>
                       )}
                       {/* Avatar Picker Mockup */}
                       <div className="flex flex-col items-center justify-center space-y-2">
-                        <div className="relative cursor-pointer">
-                          <img src={profile.avatar} className="w-20 h-20 rounded-full object-cover border-2 border-white shadow-md" alt="avatar" />
-                          <div className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-xs">
-                            <Camera className="w-3.5 h-3.5 text-gray-600" />
+                        <div 
+                          onClick={() => avatarFileInputRef.current?.click()}
+                          className="relative cursor-pointer group"
+                          title="Escolher foto da galeria"
+                        >
+                          <img src={profile.avatar} className={`w-20 h-20 rounded-full object-cover border-2 shadow-md transition group-hover:opacity-90 ${darkMode ? 'border-neutral-800' : 'border-white'}`} alt="avatar" />
+                          <div className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border flex items-center justify-center shadow-xs transition ${darkMode ? 'bg-neutral-800 border-neutral-700' : 'bg-white border-gray-200'}`}>
+                            <Camera className={`w-3.5 h-3.5 ${darkMode ? 'text-neutral-300' : 'text-gray-600'}`} />
                           </div>
+                          {/* Hidden real native file input */}
+                          <input 
+                            type="file"
+                            ref={avatarFileInputRef}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onloadend = async () => {
+                                const base64String = reader.result as string;
+                                const compressedBase64 = await compressImageBase64(base64String, 180, 0.70);
+                                if (profile) {
+                                  const updated = { ...profile, avatar: compressedBase64 };
+                                  setProfile(updated);
+                                  localStorage.setItem('cloz_profile', JSON.stringify(updated));
+                                  try {
+                                    await safeWrite(setDoc(doc(db, 'users', profile.uid), updated, { merge: true }));
+                                  } catch (err) {
+                                    console.warn("Could not save new avatar to Firestore:", err);
+                                  }
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                            className="hidden"
+                            accept="image/*"
+                          />
                         </div>
                       </div>
 
                       {/* Fields */}
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-400 mb-1 ml-1 block">{t('name')}</label>
+                        <label className={`text-[10px] font-bold mb-1 ml-1 block ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('name')}</label>
                         <input 
                           type="text" 
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
-                          className="w-full bg-neutral-100/80 rounded-2xl py-3 px-4 text-xs text-gray-800 outline-none border border-transparent focus:border-neutral-200 transition"
+                          className={`w-full rounded-2xl py-3 px-4 text-xs outline-none border transition ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white focus:border-neutral-700' : 'bg-neutral-100/80 border-transparent text-gray-800 focus:border-neutral-200'}`}
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-400 mb-1 ml-1 block">{t('username')}</label>
+                        <label className={`text-[10px] font-bold mb-1 ml-1 block ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('username')}</label>
                         <input 
                           type="text" 
                           value={editUsername}
                           onChange={(e) => setEditUsername(e.target.value)}
-                          className="w-full bg-neutral-100/80 rounded-2xl py-3 px-4 text-xs text-gray-800 outline-none border border-transparent focus:border-neutral-200 transition"
+                          className={`w-full rounded-2xl py-3 px-4 text-xs outline-none border transition ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white focus:border-neutral-700' : 'bg-neutral-100/80 border-transparent text-gray-800 focus:border-neutral-200'}`}
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-400 mb-1 ml-1 block">{t('about')}</label>
+                        <label className={`text-[10px] font-bold mb-1 ml-1 block ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('about')}</label>
                         <textarea 
                           rows={3}
                           placeholder={t('placeholderAbout')}
                           value={editBio}
                           onChange={(e) => setEditBio(e.target.value)}
-                          className="w-full bg-neutral-100/80 rounded-2xl py-3 px-4 text-xs text-gray-800 outline-none border border-transparent focus:border-neutral-200 transition resize-none"
+                          className={`w-full rounded-2xl py-3 px-4 text-xs outline-none border transition resize-none ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white focus:border-neutral-700' : 'bg-neutral-100/80 border-transparent text-gray-800 focus:border-neutral-200'}`}
                         />
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-400 mb-1 ml-1 block">{t('location')}</label>
+                        <label className={`text-[10px] font-bold mb-1 ml-1 block ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('location')}</label>
                         <div className="relative">
                           <MapPin className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                           <input 
                             type="text" 
                             value={editLocation}
                             onChange={(e) => setEditLocation(e.target.value)}
-                            className="w-full bg-neutral-100/80 rounded-2xl py-3 pl-10 pr-10 text-xs text-gray-800 outline-none border border-transparent focus:border-neutral-200 transition"
+                            className={`w-full rounded-2xl py-3 pl-10 pr-10 text-xs outline-none border transition ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white focus:border-neutral-700' : 'bg-neutral-100/80 border-transparent text-gray-800 focus:border-neutral-200'}`}
                           />
                           {editLocation && (
                             <button 
@@ -2941,12 +3100,12 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-gray-400 mb-1 ml-1 block">{t('instagram')}</label>
+                        <label className={`text-[10px] font-bold mb-1 ml-1 block ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('instagram')}</label>
                         <input 
                           type="text" 
                           value={editInstagram}
                           onChange={(e) => setEditInstagram(e.target.value)}
-                          className="w-full bg-neutral-100/80 rounded-2xl py-3 px-4 text-xs text-gray-800 outline-none border border-transparent focus:border-neutral-200 transition"
+                          className={`w-full rounded-2xl py-3 px-4 text-xs outline-none border transition ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white focus:border-neutral-700' : 'bg-neutral-100/80 border-transparent text-gray-800 focus:border-neutral-200'}`}
                         />
                       </div>
 
@@ -2970,22 +3129,22 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* --- 3. SETTINGS: PRIVACY SCREEN --- */}
                 {settingsScreen === 'privacy' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn text-left">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn text-left transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen('main')} 
-                        className="p-1.5 -ml-1 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                        className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}
                       >
-                        <ArrowLeft className="w-5 h-5 text-gray-800" />
+                        <ArrowLeft className={`w-5 h-5 ${darkMode ? 'text-white' : 'text-gray-800'}`} />
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('privacy')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('privacy')}</span>
                       <button 
                         onClick={() => {
                           alert("Configurações de privacidade salvas!");
                           setSettingsScreen('main');
                         }}
-                        className="text-xs font-bold text-[#1E3F20]"
+                        className={`text-xs font-bold ${darkMode ? 'text-emerald-400' : 'text-[#1E3F20]'}`}
                       >
                         {t('save')}
                       </button>
@@ -2994,48 +3153,48 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     {/* Content */}
                     <div className="flex-1 p-5 space-y-5 text-left overflow-y-auto pb-20">
                       {/* Censored/Anonymized Image Block exactly like screenshots */}
-                      <div className="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 rounded-2xl shadow-3xs">
-                        <div className="relative rounded-xl overflow-hidden aspect-[3/4] w-36 shadow-sm border border-neutral-100">
+                      <div className={`flex flex-col items-center justify-center p-4 border rounded-2xl shadow-3xs ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
+                        <div className={`relative rounded-xl overflow-hidden aspect-[3/4] w-36 shadow-sm border ${darkMode ? 'border-neutral-800' : 'border-neutral-100'}`}>
                           <img src={profile.avatar} className="w-full h-full object-cover" alt="anonymized" />
                           {/* Censorship Brush Stroke / Black Bar over eyes */}
                           <div className="absolute top-[35%] left-0 right-0 h-4 bg-black/95 transform rotate-2 shadow-xs flex items-center justify-center">
                             <span className="text-[7px] text-white tracking-widest font-mono uppercase font-bold">PRIVATE</span>
                           </div>
                         </div>
-                        <span className="text-[10px] text-gray-400 italic text-center mt-3 leading-normal max-w-[200px]">
+                        <span className={`text-[10px] italic text-center mt-3 leading-normal max-w-[200px] ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>
                           {t('anonymizedImage')}
                         </span>
                       </div>
 
                       {/* Options Radio List */}
-                      <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden divide-y divide-gray-50">
+                      <div className={`rounded-2xl border shadow-3xs overflow-hidden divide-y ${darkMode ? 'bg-neutral-900 border-neutral-800 divide-neutral-800' : 'bg-white border-gray-100 divide-gray-50'}`}>
                         {/* Option 1: Privada */}
                         <div 
                           onClick={() => setIsProfilePrivate(true)}
-                          className="p-4 flex items-start justify-between cursor-pointer hover:bg-neutral-50/50 transition"
+                          className={`p-4 flex items-start justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-neutral-50/50'}`}
                         >
                           <div className="space-y-1 text-left max-w-[80%]">
-                            <p className="text-xs font-bold text-gray-800">{t('privateOpt')}</p>
-                            <p className="text-[10px] text-gray-400 leading-normal">{t('privateOptSub')}</p>
+                            <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t('privateOpt')}</p>
+                            <p className={`text-[10px] leading-normal ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('privateOptSub')}</p>
                           </div>
                           {/* Radio circle */}
-                          <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition ${isProfilePrivate ? 'border-[#1E3F20]' : 'border-gray-300'}`}>
-                            {isProfilePrivate && <div className="w-2.2 h-2.2 rounded-full bg-[#1E3F20]" />}
+                          <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition ${isProfilePrivate ? (darkMode ? 'border-emerald-500' : 'border-[#1E3F20]') : 'border-gray-300'}`}>
+                            {isProfilePrivate && <div className={`w-2.2 h-2.2 rounded-full ${darkMode ? 'bg-emerald-500' : 'bg-[#1E3F20]'}`} />}
                           </div>
                         </div>
 
                         {/* Option 2: Pública */}
                         <div 
                           onClick={() => setIsProfilePrivate(false)}
-                          className="p-4 flex items-start justify-between cursor-pointer hover:bg-neutral-50/50 transition"
+                          className={`p-4 flex items-start justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-neutral-50/50'}`}
                         >
                           <div className="space-y-1 text-left max-w-[80%]">
-                            <p className="text-xs font-bold text-gray-800">{t('publicOpt')}</p>
-                            <p className="text-[10px] text-gray-400 leading-normal">{t('publicOptSub')}</p>
+                            <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t('publicOpt')}</p>
+                            <p className={`text-[10px] leading-normal ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('publicOptSub')}</p>
                           </div>
                           {/* Radio circle */}
-                          <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition ${!isProfilePrivate ? 'border-[#1E3F20]' : 'border-gray-300'}`}>
-                            {!isProfilePrivate && <div className="w-2.2 h-2.2 rounded-full bg-[#1E3F20]" />}
+                          <div className={`w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition ${!isProfilePrivate ? (darkMode ? 'border-emerald-500' : 'border-[#1E3F20]') : 'border-gray-300'}`}>
+                            {!isProfilePrivate && <div className={`w-2.2 h-2.2 rounded-full ${darkMode ? 'bg-emerald-500' : 'bg-[#1E3F20]'}`} />}
                           </div>
                         </div>
                       </div>
@@ -3045,21 +3204,21 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* --- 4. SETTINGS: BLOCKED USERS SCREEN --- */}
                 {settingsScreen === 'blocked' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn text-left">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn text-left transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen('main')} 
-                        className="p-1.5 -ml-1 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                        className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}
                       >
-                        <ArrowLeft className="w-5 h-5 text-gray-800" />
+                        <ArrowLeft className={`w-5 h-5 ${darkMode ? 'text-white' : 'text-gray-800'}`} />
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('blockedUsers')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('blockedUsers')}</span>
                       <div className="w-8"></div>
                     </div>
 
                     {/* Centered Empty State */}
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-gray-400">
+                    <div className={`flex-1 flex flex-col items-center justify-center p-8 text-center ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>
                       <svg className="w-10 h-10 text-gray-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1.5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                       </svg>
@@ -3070,31 +3229,31 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* --- 5. SETTINGS: NOTIFICATIONS MAIN --- */}
                 {settingsScreen === 'notifications' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn text-left">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn text-left transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen('main')} 
-                        className="p-1.5 -ml-1 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                        className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}
                       >
-                        <ArrowLeft className="w-5 h-5 text-gray-800" />
+                        <ArrowLeft className={`w-5 h-5 ${darkMode ? 'text-white' : 'text-gray-800'}`} />
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('notifications')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('notifications')}</span>
                       <div className="w-8"></div>
                     </div>
 
                     {/* Scroll Area */}
                     <div className="flex-1 p-4 space-y-4 text-left overflow-y-auto pb-20">
                       {/* Master Push Toggle */}
-                      <div className="bg-white rounded-2xl p-4 flex items-center justify-between border border-gray-100 shadow-3xs">
+                      <div className={`rounded-2xl p-4 flex items-center justify-between border shadow-3xs ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                         <div className="space-y-0.5 max-w-[75%] text-left">
-                          <p className="text-xs font-bold text-gray-800">{t('allowNotifications')}</p>
-                          <p className="text-[10px] text-gray-400 leading-normal">{t('allowNotificationsSub')}</p>
+                          <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t('allowNotifications')}</p>
+                          <p className={`text-[10px] leading-normal ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('allowNotificationsSub')}</p>
                         </div>
                         {/* Custom Switch */}
                         <button
                           onClick={() => setAllowNotifications(!allowNotifications)}
-                          className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                          className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${allowNotifications ? 'bg-[#1E3F20]' : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                         >
                           <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                         </button>
@@ -3102,45 +3261,45 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                       {/* Section: AFINIDADES */}
                       <div className="space-y-1.5 opacity-90">
-                        <p className="text-[10px] font-bold text-gray-400 tracking-wider uppercase ml-1.5">{t('affinities')}</p>
-                        <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden divide-y divide-gray-50">
+                        <p className={`text-[10px] font-bold tracking-wider uppercase ml-1.5 ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>{t('affinities')}</p>
+                        <div className={`rounded-2xl border shadow-3xs overflow-hidden divide-y ${darkMode ? 'bg-neutral-900 border-neutral-800 divide-neutral-800' : 'bg-white border-gray-100 divide-gray-50'}`}>
                           {/* Row 1: Postagens */}
                           <div 
                             onClick={() => setSettingsScreen('notifications_posts')}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/40 text-white' : 'hover:bg-neutral-50/50 text-gray-800'}`}
                           >
-                            <span className="text-xs font-semibold text-gray-700">{t('posts')}</span>
+                            <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('posts')}</span>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
 
                           {/* Row 2: Seguindo e Seguidores */}
                           <div 
                             onClick={() => setSettingsScreen('notifications_follows')}
-                            className="p-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition"
+                            className={`p-4 flex items-center justify-between cursor-pointer transition ${darkMode ? 'hover:bg-neutral-800/40 text-white' : 'hover:bg-neutral-50/50 text-gray-800'}`}
                           >
-                            <span className="text-xs font-semibold text-gray-700">{t('followingFollowers')}</span>
+                            <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('followingFollowers')}</span>
                             <ChevronRight className="w-4 h-4 text-gray-400" />
                           </div>
 
                           {/* Row 3: Aura e Tendências */}
-                          <div className="p-4 flex items-center justify-between">
-                            <span className="text-xs font-semibold text-gray-700">{t('auraTrends')}</span>
+                          <div className={`p-4 flex items-center justify-between ${darkMode ? 'text-white' : 'text-gray-850'}`}>
+                            <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('auraTrends')}</span>
                             <button
                               disabled={!allowNotifications}
                               onClick={() => setNotifAuraTrends(!notifAuraTrends)}
-                              className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifAuraTrends && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                              className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifAuraTrends && allowNotifications ? 'bg-[#1E3F20]' : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                             >
                               <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifAuraTrends && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                             </button>
                           </div>
 
                           {/* Row 4: Lembretes Diários de OOTD */}
-                          <div className="p-4 flex items-center justify-between">
-                            <span className="text-xs font-semibold text-gray-700">{t('dailyOOTD')}</span>
+                          <div className={`p-4 flex items-center justify-between ${darkMode ? 'text-white' : 'text-gray-850'}`}>
+                            <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('dailyOOTD')}</span>
                             <button
                               disabled={!allowNotifications}
                               onClick={() => setNotifDailyOOTD(!notifDailyOOTD)}
-                              className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifDailyOOTD && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                              className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifDailyOOTD && allowNotifications ? 'bg-[#1E3F20]' : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                             >
                               <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifDailyOOTD && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                             </button>
@@ -3153,29 +3312,29 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* --- 6. SETTINGS: NOTIFICATIONS POSTS --- */}
                 {settingsScreen === 'notifications_posts' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn text-left">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn text-left transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen('notifications')} 
-                        className="p-1.5 -ml-1 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                        className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}
                       >
-                        <ArrowLeft className="w-5 h-5 text-gray-800" />
+                        <ArrowLeft className={`w-5 h-5 ${darkMode ? 'text-white' : 'text-gray-800'}`} />
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('posts')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('posts')}</span>
                       <div className="w-8"></div>
                     </div>
 
                     {/* Options list */}
                     <div className="flex-1 p-4 space-y-4 text-left overflow-y-auto pb-20">
-                      <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden divide-y divide-gray-50">
+                      <div className={`rounded-2xl border shadow-3xs overflow-hidden divide-y ${darkMode ? 'bg-neutral-900 border-neutral-800 divide-neutral-800' : 'bg-white border-gray-100 divide-gray-50'}`}>
                         {/* Curtidas */}
                         <div className="p-4 flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-700">{t('likes')}</span>
+                          <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('likes')}</span>
                           <button
                             disabled={!allowNotifications}
                             onClick={() => setNotifLikes(!notifLikes)}
-                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifLikes && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifLikes && allowNotifications ? (darkMode ? 'bg-emerald-600' : 'bg-[#1E3F20]') : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                           >
                             <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifLikes && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                           </button>
@@ -3183,11 +3342,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                         {/* Apreciações Profundas */}
                         <div className="p-4 flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-700">{t('deepAppreciations')}</span>
+                          <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('deepAppreciations')}</span>
                           <button
                             disabled={!allowNotifications}
                             onClick={() => setNotifAppreciations(!notifAppreciations)}
-                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifAppreciations && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifAppreciations && allowNotifications ? (darkMode ? 'bg-emerald-600' : 'bg-[#1E3F20]') : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                           >
                             <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifAppreciations && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                           </button>
@@ -3196,13 +3355,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                         {/* Notas */}
                         <div className="p-4 flex items-center justify-between">
                           <div className="text-left space-y-0.5">
-                            <span className="text-xs font-semibold text-gray-700 block">{t('notes')}</span>
-                            <span className="text-[9px] text-gray-400 block">{t('notesSub')}</span>
+                            <span className={`text-xs font-semibold block ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('notes')}</span>
+                            <span className={`text-[9px] block ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>{t('notesSub')}</span>
                           </div>
                           <button
                             disabled={!allowNotifications}
                             onClick={() => setNotifNotes(!notifNotes)}
-                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifNotes && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifNotes && allowNotifications ? (darkMode ? 'bg-emerald-600' : 'bg-[#1E3F20]') : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                           >
                             <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifNotes && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                           </button>
@@ -3210,11 +3369,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                         {/* Curtidas em Comentários */}
                         <div className="p-4 flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-700">{t('likesOnComments')}</span>
+                          <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('likesOnComments')}</span>
                           <button
                             disabled={!allowNotifications}
                             onClick={() => setNotifCommentLikes(!notifCommentLikes)}
-                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifCommentLikes && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifCommentLikes && allowNotifications ? (darkMode ? 'bg-emerald-600' : 'bg-[#1E3F20]') : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                           >
                             <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifCommentLikes && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                           </button>
@@ -3226,29 +3385,29 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* --- 7. SETTINGS: NOTIFICATIONS FOLLOWS --- */}
                 {settingsScreen === 'notifications_follows' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn text-left">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn text-left transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen('notifications')} 
-                        className="p-1.5 -ml-1 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                        className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}
                       >
-                        <ArrowLeft className="w-5 h-5 text-gray-800" />
+                        <ArrowLeft className={`w-5 h-5 ${darkMode ? 'text-white' : 'text-gray-800'}`} />
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('followingFollowers')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('followingFollowers')}</span>
                       <div className="w-8"></div>
                     </div>
 
                     {/* Options list */}
                     <div className="flex-1 p-4 space-y-4 text-left overflow-y-auto pb-20">
-                      <div className="bg-white rounded-2xl border border-gray-100 shadow-3xs overflow-hidden divide-y divide-gray-50">
+                      <div className={`rounded-2xl border shadow-3xs overflow-hidden divide-y ${darkMode ? 'bg-neutral-900 border-neutral-800 divide-neutral-800' : 'bg-white border-gray-100 divide-gray-50'}`}>
                         {/* Novos Seguidores */}
                         <div className="p-4 flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-700">{t('newFollowers')}</span>
+                          <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('newFollowers')}</span>
                           <button
                             disabled={!allowNotifications}
                             onClick={() => setNotifNewFollowers(!notifNewFollowers)}
-                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifNewFollowers && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifNewFollowers && allowNotifications ? (darkMode ? 'bg-emerald-600' : 'bg-[#1E3F20]') : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                           >
                             <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifNewFollowers && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                           </button>
@@ -3256,11 +3415,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                         {/* Solicitações Aceitas */}
                         <div className="p-4 flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-700">{t('acceptedRequests')}</span>
+                          <span className={`text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}>{t('acceptedRequests')}</span>
                           <button
                             disabled={!allowNotifications}
                             onClick={() => setNotifAcceptedRequests(!notifAcceptedRequests)}
-                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifAcceptedRequests && allowNotifications ? 'bg-[#1E3F20]' : 'bg-neutral-200'}`}
+                            className={`relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${!allowNotifications ? 'opacity-40 cursor-not-allowed' : ''} ${notifAcceptedRequests && allowNotifications ? (darkMode ? 'bg-emerald-600' : 'bg-[#1E3F20]') : (darkMode ? 'bg-neutral-800' : 'bg-neutral-200')}`}
                           >
                             <span className={`pointer-events-none inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${notifAcceptedRequests && allowNotifications ? 'translate-x-4.5' : 'translate-x-0'}`} />
                           </button>
@@ -3272,21 +3431,21 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* --- 8. SETTINGS: LANGUAGE SELECTION SCREEN --- */}
                 {settingsScreen === 'language' && (
-                  <div className="flex-1 flex flex-col h-full bg-[#FAF9F6] animate-fadeIn text-left">
+                  <div className={`flex-1 flex flex-col h-full animate-fadeIn text-left transition-colors duration-200 ${darkMode ? 'bg-[#0A0A0A]' : 'bg-[#FAF9F6]'}`}>
                     {/* Header */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 transition-colors duration-200 ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-100'}`}>
                       <button 
                         onClick={() => setSettingsScreen('main')} 
-                        className="p-1.5 -ml-1 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                        className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}
                       >
-                        <ArrowLeft className="w-5 h-5 text-gray-800" />
+                        <ArrowLeft className={`w-5 h-5 ${darkMode ? 'text-white' : 'text-gray-800'}`} />
                       </button>
-                      <span className="text-sm font-bold text-gray-900">{t('language')}</span>
+                      <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t('language')}</span>
                       <div className="w-8"></div>
                     </div>
 
                     {/* Language Selection List */}
-                    <div className="flex-1 overflow-y-auto divide-y divide-gray-100 bg-white">
+                    <div className={`flex-1 overflow-y-auto divide-y ${darkMode ? 'bg-[#0A0A0A] divide-neutral-800/60' : 'bg-white divide-gray-100'}`}>
                       {['Português', 'English', 'Español', 'Français', 'Deutsch', '简体中文', '繁體中文', '日本語'].map((lang) => {
                         const isActive = language === lang;
                         const flagMap: Record<string, string> = {
@@ -3307,14 +3466,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                               setLanguage(lang);
                               setSettingsScreen('main');
                             }}
-                            className="px-5 py-4 flex items-center justify-between hover:bg-neutral-50/50 cursor-pointer transition select-none text-left"
+                            className={`px-5 py-4 flex items-center justify-between cursor-pointer transition select-none text-left ${darkMode ? 'hover:bg-neutral-800/40 text-white' : 'hover:bg-neutral-50/50 text-gray-800'}`}
                           >
-                            <div className="flex items-center space-x-3 text-xs font-semibold text-gray-800">
+                            <div className={`flex items-center space-x-3 text-xs font-semibold ${darkMode ? 'text-neutral-200' : 'text-gray-850'}`}>
                               <span className="text-base">{flagMap[lang] || '🌐'}</span>
                               <span>{lang}</span>
                             </div>
                             {isActive && (
-                              <svg className="w-4 h-4 text-emerald-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+                              <svg className={`w-4 h-4 ${darkMode ? 'text-emerald-400' : 'text-[#1E3F20]'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
                             )}
@@ -3329,8 +3488,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                 {settingsScreen === null && (
                   <div className="flex-1 flex flex-col h-full overflow-y-auto">
                     {/* HIGH-FIDELITY SCREEN HEADER */}
-                    <div className="px-5 py-4 border-b border-gray-100 bg-white flex items-center justify-between sticky top-0 z-20">
-                      <span className="text-lg font-bold text-gray-900 tracking-tight">@{profile.username}</span>
+                    <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-100 text-gray-900'}`}>
+                      <span className="text-lg font-bold tracking-tight">@{profile.username}</span>
                       
                       <div className="flex items-center space-x-2">
                         {/* Dark forest green 'Convidar' button from screenshot */}
@@ -3358,9 +3517,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             navigator.clipboard.writeText(window.location.href);
                             alert("Link do perfil copiado!");
                           }}
-                          className="p-2 text-gray-800 hover:bg-neutral-50 rounded-full transition cursor-pointer"
+                          className={`p-2 rounded-full transition cursor-pointer ${darkMode ? 'text-white hover:bg-neutral-800' : 'text-gray-800 hover:bg-neutral-50'}`}
                         >
-                          <svg className="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                           </svg>
                         </button>
@@ -3368,18 +3527,18 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     </div>
 
                     {/* Profile header details */}
-                    <div className="p-5 bg-white space-y-4">
+                    <div className={`p-5 space-y-4 ${darkMode ? 'bg-neutral-900' : 'bg-white'}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-4">
                           {/* Avatar with top-right custom Level badge matching screenshot */}
                           <div className="relative shrink-0">
                             <img 
                               src={profile.avatar} 
-                              className="w-[72px] h-[72px] rounded-full object-cover border-2 border-white shadow-xs" 
+                              className={`w-[72px] h-[72px] rounded-full object-cover border-2 shadow-xs ${darkMode ? 'border-neutral-800' : 'border-white'}`} 
                               alt="avatar" 
                             />
                             {/* Custom visual badge representing Level / Trend (e.g. "↗ 3") */}
-                            <div className="absolute -top-1.5 -right-1.5 bg-white border border-neutral-200 shadow-3xs rounded-full px-1.8 py-0.5 text-[9px] font-bold text-gray-800 flex items-center space-x-0.5">
+                            <div className={`absolute -top-1.5 -right-1.5 border shadow-3xs rounded-full px-1.8 py-0.5 text-[9px] font-bold flex items-center space-x-0.5 ${darkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-white border-neutral-200 text-gray-800'}`}>
                               <span className="font-mono text-gray-500 font-extrabold">↗</span>
                               <span>{Math.floor(profile.auraScore / 10) + 3}</span>
                             </div>
@@ -3388,7 +3547,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           <div className="space-y-1">
                             <div className="flex items-center space-x-1.5">
                               {/* Name ("Rick") with beautiful Instagram-style pinkish camera brand icon */}
-                              <h3 className="font-display font-extrabold text-base text-gray-900 leading-none">
+                              <h3 className={`font-display font-extrabold text-base leading-none ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                 {profile.name || profile.displayName || ''}
                               </h3>
                               
@@ -3397,7 +3556,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                   onClick={() => {
                                     window.open(`https://instagram.com/${profile.instagram}`, '_blank');
                                   }}
-                                  className="p-1 hover:bg-neutral-100 rounded-full transition cursor-pointer flex items-center justify-center shrink-0"
+                                  className={`p-1 rounded-full transition cursor-pointer flex items-center justify-center shrink-0 ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-100'}`}
                                   title="Instagram"
                                 >
                                   <svg className="w-3.5 h-3.5 text-pink-500 fill-none stroke-current" viewBox="0 0 24 24" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -3410,7 +3569,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             </div>
                             
                             <span className="text-xs font-medium text-gray-400 block">
-                              {profile.followersCount || 3} <span className="text-gray-400/80">{t('followers')}</span> &nbsp;/&nbsp; {profile.followingCount || 6} <span className="text-gray-400/80">{t('following')}</span>
+                              {profile.followersCount ?? 0} <span className="text-gray-400/80">{t('followers')}</span> &nbsp;/&nbsp; {profile.followingCount ?? 0} <span className="text-gray-400/80">{t('following')}</span>
                             </span>
                           </div>
                         </div>
@@ -3418,10 +3577,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                         {/* Settings Gear inside custom red ring matching the screenshot perfectly */}
                         <button 
                           onClick={() => setSettingsScreen('main')}
-                          className="relative p-1 rounded-full border border-red-500/80 hover:scale-105 transition duration-200 shadow-3xs flex items-center justify-center cursor-pointer bg-white"
+                          className={`relative p-1 rounded-full border border-red-500/80 hover:scale-105 transition duration-200 shadow-3xs flex items-center justify-center cursor-pointer ${darkMode ? 'bg-neutral-900' : 'bg-white'}`}
                         >
-                      <div className="p-1.5 rounded-full hover:bg-neutral-50 transition">
-                        <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                      <div className={`p-1.5 rounded-full transition ${darkMode ? 'hover:bg-neutral-800' : 'hover:bg-neutral-50'}`}>
+                        <svg className={`w-5 h-5 ${darkMode ? 'text-neutral-300' : 'text-gray-700'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -3441,7 +3600,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           await setDoc(doc(db, 'users', profile.uid), updated);
                         }
                       }}
-                      className="flex items-center space-x-1.5 border border-gray-200/80 bg-neutral-50/50 px-3 py-1.8 rounded-full text-gray-700 font-mono text-[11px] font-bold hover:bg-neutral-100 transition duration-200 cursor-pointer shadow-3xs"
+                      className={`flex items-center space-x-1.5 border px-3 py-1.8 rounded-full font-mono text-[11px] font-bold transition duration-200 cursor-pointer shadow-3xs ${darkMode ? 'border-neutral-800 bg-neutral-900 text-neutral-200 hover:bg-neutral-850' : 'border-gray-200/80 bg-neutral-50/50 text-gray-700 hover:bg-neutral-100'}`}
                     >
                       <MapPin className="w-3.5 h-3.5 text-gray-400 stroke-[2.5]" />
                       <span>{profile.location || 'Não especificado'}</span>
@@ -3449,7 +3608,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     </button>
 
                     {/* Locked Stats Red Pill: background white, red border, red text */}
-                    <div className="flex items-center space-x-1.5 border border-red-500/80 bg-white px-3.5 py-1.8 rounded-full text-[#D32F2F] font-mono text-[11px] font-bold shadow-3xs">
+                    <div className={`flex items-center space-x-1.5 border px-3.5 py-1.8 rounded-full font-mono text-[11px] font-bold shadow-3xs ${darkMode ? 'border-red-500/80 bg-red-950/20 text-red-400' : 'border-red-500/80 bg-white text-[#D32F2F]'}`}>
                       <span>🔒</span>
                       <span>{looks.filter(l => l.userId === profile.uid).length || 3} / 12</span>
                       {/* Simple Bar Chart SVG */}
@@ -3460,22 +3619,22 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                   </div>
 
                   {/* Sub tabs inside profile (Calendar, Looks, Closet) - Minimalist ICONS ONLY matching the screenshot */}
-                  <div className="flex border-b border-gray-100/60 pb-1 pt-2">
+                  <div className={`flex border-b pb-1 pt-2 ${darkMode ? 'border-neutral-800' : 'border-gray-100/60'}`}>
                     <button 
                       onClick={() => setProfileSubTab('calendar')}
-                      className={`flex-1 text-center py-3 border-b-2 font-display text-xs font-bold flex items-center justify-center cursor-pointer transition ${profileSubTab === 'calendar' ? 'border-black text-black' : 'border-transparent text-gray-300 hover:text-gray-500'}`}
+                      className={`flex-1 text-center py-3 border-b-2 font-display text-xs font-bold flex items-center justify-center cursor-pointer transition ${profileSubTab === 'calendar' ? (darkMode ? 'border-white text-white' : 'border-black text-black') : (darkMode ? 'border-transparent text-neutral-450 hover:text-neutral-350' : 'border-transparent text-gray-300 hover:text-gray-500')}`}
                     >
                       <CalendarIcon className="w-5 h-5 stroke-[2]" />
                     </button>
                     <button 
                       onClick={() => setProfileSubTab('camera')}
-                      className={`flex-1 text-center py-3 border-b-2 font-display text-xs font-bold flex items-center justify-center cursor-pointer transition ${profileSubTab === 'camera' ? 'border-black text-black' : 'border-transparent text-gray-300 hover:text-gray-500'}`}
+                      className={`flex-1 text-center py-3 border-b-2 font-display text-xs font-bold flex items-center justify-center cursor-pointer transition ${profileSubTab === 'camera' ? (darkMode ? 'border-white text-white' : 'border-black text-black') : (darkMode ? 'border-transparent text-neutral-450 hover:text-neutral-350' : 'border-transparent text-gray-300 hover:text-gray-500')}`}
                     >
                       <Camera className="w-5 h-5 stroke-[2]" />
                     </button>
                     <button 
                       onClick={() => setProfileSubTab('closet')}
-                      className={`flex-1 text-center py-3 border-b-2 font-display text-xs font-bold flex items-center justify-center cursor-pointer transition ${profileSubTab === 'closet' ? 'border-black text-black' : 'border-transparent text-gray-300 hover:text-gray-500'}`}
+                      className={`flex-1 text-center py-3 border-b-2 font-display text-xs font-bold flex items-center justify-center cursor-pointer transition ${profileSubTab === 'closet' ? (darkMode ? 'border-white text-white' : 'border-black text-black') : (darkMode ? 'border-transparent text-neutral-450 hover:text-neutral-350' : 'border-transparent text-gray-300 hover:text-gray-500')}`}
                     >
                       <Shirt className="w-5 h-5 stroke-[2]" />
                     </button>
@@ -3486,9 +3645,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                 
                 {/* Subtab 1: Calendar View */}
                 {profileSubTab === 'calendar' && (
-                  <div className="p-3 space-y-4 animate-fadeIn pb-12 bg-white flex-1">
+                  <div className={`p-3 space-y-4 animate-fadeIn pb-12 flex-1 ${darkMode ? 'bg-neutral-900 text-white' : 'bg-white text-[#171717]'}`}>
                     {/* Centered Month with Upload iOS Icon next to it */}
-                    <div className="flex items-center justify-center space-x-1.5 py-1 text-gray-800 font-medium">
+                    <div className={`flex items-center justify-center space-x-1.5 py-1 font-medium ${darkMode ? 'text-neutral-200' : 'text-gray-800'}`}>
                       <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                       </svg>
@@ -3496,7 +3655,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     </div>
 
                     {/* Portuguese Weekdays Headers Row */}
-                    <div className="grid grid-cols-7 text-center text-[11px] font-semibold text-gray-500 border-b border-gray-100 pb-2">
+                    <div className={`grid grid-cols-7 text-center text-[11px] font-semibold pb-2 border-b ${darkMode ? 'text-neutral-400 border-neutral-800' : 'text-gray-500 border-gray-100'}`}>
                       <span>Se</span>
                       <span>Te</span>
                       <span>Qu</span>
@@ -3507,7 +3666,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     </div>
 
                     {/* Calendar Days Grid */}
-                    <div className="grid grid-cols-7 bg-white border border-gray-100 rounded-none overflow-hidden">
+                    <div className={`grid grid-cols-7 rounded-none overflow-hidden border ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                       {getCalendarDays().map((dayObj, idx) => {
                         const hasWeather = dayObj.day && weatherForecast[dayObj.day];
                         const isToday = dayObj.day === 17;
@@ -3515,16 +3674,16 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                         return (
                           <div 
                             key={idx} 
-                            className="aspect-[1/1.6] relative flex flex-col items-center border border-gray-100 bg-white p-1 select-none overflow-hidden"
+                            className={`aspect-[1/1.6] relative flex flex-col items-center border p-1 select-none overflow-hidden ${darkMode ? 'border-neutral-800 bg-neutral-950' : 'border-gray-100 bg-white'}`}
                           >
                             {dayObj.day && (
                               <div className="w-full flex justify-start mb-0.5">
                                 {isToday ? (
-                                  <span className="w-5 h-5 rounded-full border border-black flex items-center justify-center text-[10px] font-bold text-black bg-white">
+                                  <span className={`w-5 h-5 rounded-full border flex items-center justify-center text-[10px] font-bold ${darkMode ? 'border-amber-500 text-amber-500 bg-neutral-900' : 'border-black text-black bg-white'}`}>
                                     {dayObj.day}
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-mono text-gray-400 p-0.5 leading-none">
+                                  <span className={`text-[10px] font-mono p-0.5 leading-none ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>
                                     {dayObj.day}
                                   </span>
                                 )}
@@ -3533,17 +3692,17 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                             {/* Show outfit look image if uploaded */}
                             {dayObj.hasLook ? (
-                              <div 
-                                onClick={() => setSelectedLook(dayObj.hasLook)}
-                                className="absolute inset-0.5 rounded overflow-hidden cursor-pointer shadow-3xs transition hover:scale-[1.03] z-10"
-                              >
-                                <img 
-                                  src={dayObj.hasLook.image} 
-                                  className="w-full h-full object-cover" 
-                                  alt="calendar look" 
-                                  referrerPolicy="no-referrer"
-                                />
-                              </div>
+                                <div 
+                                  onClick={() => setSelectedLook(dayObj.hasLook)}
+                                  className="absolute inset-0.5 rounded overflow-hidden cursor-pointer shadow-3xs transition hover:scale-[1.03] z-10"
+                                >
+                                  <img 
+                                    src={dayObj.hasLook.image} 
+                                    className="w-full h-full object-cover" 
+                                    alt="calendar look" 
+                                    referrerPolicy="no-referrer"
+                                  />
+                                </div>
                             ) : (
                               dayObj.day && hasWeather && (
                                 <div className="flex-1 flex flex-col items-center justify-between w-full pb-0.5">
@@ -3575,12 +3734,12 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                   </div>
 
                                   {/* Max Temperature / High */}
-                                  <span className="text-[11px] font-extrabold text-gray-800 leading-none">
+                                  <span className={`text-[11px] font-extrabold leading-none ${darkMode ? 'text-white' : 'text-gray-800'}`}>
                                     {weatherForecast[dayObj.day].tempMax}°C
                                   </span>
 
                                   {/* Min Temperature / Low */}
-                                  <span className="text-[9px] font-medium text-gray-400 leading-none mt-0.5">
+                                  <span className={`text-[9px] font-medium leading-none mt-0.5 ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>
                                     {weatherForecast[dayObj.day].tempMin}°C
                                   </span>
                                 </div>
@@ -3592,11 +3751,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     </div>
 
                     {/* Extra Statistics Banner */}
-                    <div className="p-3.5 bg-[#E5E5E0]/20 rounded-2xl border border-gray-100 text-xs font-light leading-relaxed">
-                      <p className="font-bold text-gray-800">Uso do Guarda-Roupa</p>
-                      <p className="text-gray-500 text-[11px] mt-1">
+                    <div className={`p-3.5 rounded-2xl border text-xs font-light leading-relaxed ${darkMode ? 'bg-neutral-950 border-neutral-800' : 'bg-[#E5E5E0]/20 border-gray-100'}`}>
+                      <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Uso do Guarda-Roupa</p>
+                      <p className={`text-[11px] mt-1 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
                         Sua agenda de estilo está sincronizada em tempo real com a previsão de 
-                        <span className="font-bold text-gray-700"> São Paulo</span>. Use sugestões de IA baseadas nas condições climáticas do dia!
+                        <span className={`font-bold ${darkMode ? 'text-neutral-200' : 'text-gray-700'}`}> São Paulo</span>. Use sugestões de IA baseadas condições climáticas do dia!
                       </p>
                     </div>
                   </div>
@@ -3626,10 +3785,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                 {profileSubTab === 'closet' && (
                   <div className="p-3 space-y-4 animate-fadeIn pb-12">
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider">Seu Guarda-Roupa ({closet.filter(c => c.userId === profile.uid).length} Peças)</span>
+                      <span className={`text-[10px] font-mono uppercase tracking-wider ${darkMode ? 'text-neutral-400' : 'text-gray-400'}`}>Seu Guarda-Roupa ({closet.filter(c => c.userId === profile.uid).length} Peças)</span>
                       <button 
                         onClick={() => setIsAddingClosetItem(true)}
-                        className="bg-black text-white px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center space-x-1 hover:bg-neutral-800 cursor-pointer"
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center space-x-1 cursor-pointer transition ${darkMode ? 'bg-white text-black hover:bg-neutral-200' : 'bg-black text-white hover:bg-neutral-800'}`}
                       >
                         <Plus className="w-3 h-3" />
                         <span>Adicionar</span>
@@ -3638,9 +3797,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                     {/* Simple Closet Form popup */}
                     {isAddingClosetItem && (
-                      <div className="bg-white p-3.5 rounded-2xl border border-gray-200/80 shadow-md space-y-2.5 text-xs text-left">
-                        <div className="flex justify-between items-center pb-1 border-b border-gray-100">
-                          <span className="font-bold text-gray-800">Cadastrar Nova Peça</span>
+                      <div className={`p-3.5 rounded-2xl border shadow-md space-y-2.5 text-xs text-left ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-200/80 text-gray-850'}`}>
+                        <div className={`flex justify-between items-center pb-1 border-b ${darkMode ? 'border-neutral-800' : 'border-gray-100'}`}>
+                          <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>Cadastrar Nova Peça</span>
                           <button onClick={() => setIsAddingClosetItem(false)} className="text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>
                         </div>
                         <div className="space-y-1.5">
@@ -3649,7 +3808,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             placeholder="Nome da peça (ex: Casaco Corta Vento)" 
                             value={closetItemName}
                             onChange={(e) => setClosetItemName(e.target.value)}
-                            className="w-full bg-neutral-50 p-2 rounded outline-none border border-gray-100 text-[11px]"
+                            className={`w-full p-2 rounded outline-none text-[11px] border ${darkMode ? 'bg-neutral-800 border-neutral-700 text-white placeholder-neutral-500' : 'bg-neutral-50 border-gray-100 text-gray-900'}`}
                           />
                           <div className="grid grid-cols-2 gap-2">
                             <input 
@@ -3657,34 +3816,34 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                               placeholder="Marca" 
                               value={closetItemBrand}
                               onChange={(e) => setClosetItemBrand(e.target.value)}
-                              className="w-full bg-neutral-50 p-2 rounded outline-none border border-gray-100 text-[11px]"
+                              className={`w-full p-2 rounded outline-none text-[11px] border ${darkMode ? 'bg-neutral-800 border-neutral-700 text-white placeholder-neutral-500' : 'bg-neutral-50 border-gray-100 text-gray-900'}`}
                             />
                             <input 
                               type="number" 
                               placeholder="Preço (R$)" 
                               value={closetItemPrice}
                               onChange={(e) => setClosetItemPrice(e.target.value)}
-                              className="w-full bg-neutral-50 p-2 rounded outline-none border border-gray-100 text-[11px]"
+                              className={`w-full p-2 rounded outline-none text-[11px] border ${darkMode ? 'bg-neutral-800 border-neutral-700 text-white placeholder-neutral-500' : 'bg-neutral-50 border-gray-100 text-gray-900'}`}
                             />
                           </div>
                           
                           <div className="flex items-center justify-between text-[11px] pt-1">
-                            <span className="text-gray-500">Disponível para venda?</span>
+                            <span className={darkMode ? 'text-neutral-400' : 'text-gray-500'}>Disponível para venda?</span>
                             <input 
                               type="checkbox" 
                               checked={closetItemForSale}
                               onChange={(e) => setClosetItemForSale(e.target.checked)}
-                              className="accent-black"
+                              className={darkMode ? 'accent-emerald-400' : 'accent-black'}
                             />
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <span className="text-[9px] font-mono text-gray-400">Categoria</span>
+                              <span className={`text-[9px] font-mono ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>Categoria</span>
                               <select 
                                 value={closetItemCategory} 
                                 onChange={(e) => setClosetItemCategory(e.target.value as any)}
-                                className="w-full bg-neutral-50 p-1.5 rounded text-[10px]"
+                                className={`w-full p-1.5 rounded text-[10px] border ${darkMode ? 'bg-neutral-800 border-neutral-700 text-white' : 'bg-neutral-50 border-gray-100 text-gray-850'}`}
                               >
                                 <option value="Jeans">Jeans / Calça</option>
                                 <option value="Jaqueta">Jaqueta / Casaco</option>
@@ -3695,8 +3854,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                               </select>
                             </div>
                             <div>
-                              <span className="text-[9px] font-mono text-gray-400">Foto da Peça Real</span>
-                              <label className="flex items-center justify-center bg-neutral-50 border border-dashed border-gray-200 hover:border-black rounded p-1.5 text-[10px] cursor-pointer font-semibold transition text-center truncate max-w-full">
+                              <span className={`text-[9px] font-mono ${darkMode ? 'text-neutral-500' : 'text-gray-400'}`}>Foto da Peça Real</span>
+                              <label className={`flex items-center justify-center border border-dashed rounded p-1.5 text-[10px] cursor-pointer font-semibold transition text-center truncate max-w-full ${darkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:border-white' : 'bg-neutral-50 border-gray-200 hover:border-black text-gray-700'}`}>
                                 <span>{closetItemImage ? '✓ Foto Carregada' : 'Selecionar Foto'}</span>
                                 <input
                                   type="file"
@@ -3705,9 +3864,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                     const file = e.target.files?.[0];
                                     if (file) {
                                       const reader = new FileReader();
-                                      reader.onloadend = () => {
+                                      reader.onloadend = async () => {
                                         if (typeof reader.result === 'string') {
-                                          setClosetItemImage(reader.result);
+                                          const compressed = await compressImageBase64(reader.result);
+                                          setClosetItemImage(compressed);
                                         }
                                       };
                                       reader.readAsDataURL(file);
@@ -3722,7 +3882,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                         <button 
                           onClick={handleAddClosetItem}
                           disabled={!closetItemName || !closetItemImage}
-                          className="w-full bg-black text-white py-2 rounded text-[11px] font-bold disabled:opacity-40 transition"
+                          className={`w-full py-2 rounded text-[11px] font-bold disabled:opacity-40 transition cursor-pointer ${darkMode ? 'bg-white text-black hover:bg-neutral-200' : 'bg-black text-white hover:bg-neutral-800'}`}
                         >
                           Confirmar Peça
                         </button>
@@ -3735,9 +3895,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                         <div 
                           key={item.id}
                           onClick={() => setSelectedItem(item)}
-                          className="bg-white rounded-2xl border border-gray-200/60 overflow-hidden shadow-2xs group cursor-pointer text-left hover:border-gray-300 transition"
+                          className={`rounded-2xl border overflow-hidden shadow-2xs group cursor-pointer text-left transition ${darkMode ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-700' : 'bg-white border-gray-200/60 hover:border-gray-300'}`}
                         >
-                          <div className="aspect-square bg-neutral-50 relative overflow-hidden">
+                          <div className={`aspect-square relative overflow-hidden ${darkMode ? 'bg-neutral-950' : 'bg-neutral-50'}`}>
                             <img src={item.image} className="w-full h-full object-cover group-hover:scale-105 transition" alt="closet item" />
                             <span className="absolute bottom-2 left-2 bg-neutral-900/85 backdrop-blur-md text-emerald-400 border border-emerald-500/30 text-[7px] font-mono tracking-wider px-1.5 py-0.5 rounded shadow-sm z-10 flex items-center gap-0.5">
                               <span>3D</span> <Sparkles className="w-2 h-2 text-amber-300 animate-pulse" />
@@ -3751,13 +3911,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           <div className="p-2.5 space-y-1.5 text-xs">
                             <div>
                               <span className="text-[9px] font-mono text-gray-400 block">{item.brand}</span>
-                              <p className="font-bold text-gray-800 truncate leading-none mt-0.5">{item.name}</p>
+                              <p className={`font-bold truncate leading-none mt-0.5 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{item.name}</p>
                             </div>
                             
                             {/* Cost per Wear display */}
-                            <div className="bg-neutral-50 p-1.5 rounded-lg border border-gray-100 flex justify-between items-center text-[10px]">
+                            <div className={`p-1.5 rounded-lg border flex justify-between items-center text-[10px] ${darkMode ? 'bg-neutral-950 border-neutral-800' : 'bg-neutral-50 border-gray-100'}`}>
                               <span className="text-gray-400 font-light">Custo/Uso:</span>
-                              <span className="font-mono font-bold text-[#3A3F35]">R$ {item.costPerWear.toFixed(2)}</span>
+                              <span className={`font-mono font-bold ${darkMode ? 'text-emerald-400' : 'text-[#3A3F35]'}`}>R$ {item.costPerWear.toFixed(2)}</span>
                             </div>
                           </div>
                         </div>
@@ -3775,10 +3935,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
       {/* BOTTOM NAV BAR (Mobile Only, Fixed to screen bottom) */}
       {profile && (
-        <div className="fixed bottom-0 inset-x-0 h-16 bg-white/95 backdrop-blur-md z-40 border-t border-gray-200/60 flex md:hidden items-center justify-around px-4 text-gray-400 select-none shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
+        <div className={`fixed bottom-0 inset-x-0 h-16 backdrop-blur-md z-40 border-t flex md:hidden items-center justify-around px-4 select-none shadow-[0_-4px_12px_rgba(0,0,0,0.03)] ${darkMode ? 'bg-neutral-900/95 border-neutral-800 text-neutral-400' : 'bg-white/95 border-gray-200/60 text-gray-400'}`}>
           <button 
             onClick={() => { setActiveTab('feed'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`flex flex-col items-center justify-center p-1 cursor-pointer transition ${activeTab === 'feed' ? 'text-black font-bold' : 'hover:text-neutral-600'}`}
+            className={`flex flex-col items-center justify-center p-1 cursor-pointer transition ${activeTab === 'feed' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : (darkMode ? 'hover:text-neutral-200' : 'hover:text-neutral-600')}`}
           >
             <BookOpen className="w-5 h-5 stroke-[2px]" />
             <span className="text-[9px] font-semibold mt-1">Feed</span>
@@ -3786,7 +3946,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
           
           <button 
             onClick={() => { setActiveTab('explore'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`flex flex-col items-center justify-center p-1 cursor-pointer transition ${activeTab === 'explore' ? 'text-black font-bold' : 'hover:text-neutral-600'}`}
+            className={`flex flex-col items-center justify-center p-1 cursor-pointer transition ${activeTab === 'explore' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : (darkMode ? 'hover:text-neutral-200' : 'hover:text-neutral-600')}`}
           >
             <Search className="w-5 h-5 stroke-[2px]" />
             <span className="text-[9px] font-semibold mt-1">Buscar</span>
@@ -3794,14 +3954,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
           
           <button 
             onClick={() => { setActiveTab('add'); setSelectedLook(null); setSelectedItem(null); }}
-            className="flex flex-col items-center justify-center bg-black hover:bg-neutral-800 text-white w-10 h-10 rounded-full cursor-pointer transition-all active:scale-90 shadow-sm"
+            className={`flex flex-col items-center justify-center w-10 h-10 rounded-full cursor-pointer transition-all active:scale-90 shadow-sm ${darkMode ? 'bg-white text-black hover:bg-neutral-200' : 'bg-black text-white hover:bg-neutral-800'}`}
           >
             <Plus className="w-5 h-5" />
           </button>
           
           <button 
             onClick={() => { setActiveTab('notifications'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`flex flex-col items-center justify-center p-1 cursor-pointer relative transition ${activeTab === 'notifications' ? 'text-black font-bold' : 'hover:text-neutral-600'}`}
+            className={`flex flex-col items-center justify-center p-1 cursor-pointer relative transition ${activeTab === 'notifications' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : (darkMode ? 'hover:text-neutral-200' : 'hover:text-neutral-600')}`}
           >
             <Bell className="w-5 h-5 stroke-[2px]" />
             <span className="text-[9px] font-semibold mt-1">Avisos</span>
@@ -3812,7 +3972,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
           
           <button 
             onClick={() => { setActiveTab('profile'); setSelectedLook(null); setSelectedItem(null); }}
-            className={`flex flex-col items-center justify-center p-1 cursor-pointer transition ${activeTab === 'profile' ? 'text-black font-bold' : 'hover:text-neutral-600'}`}
+            className={`flex flex-col items-center justify-center p-1 cursor-pointer transition ${activeTab === 'profile' ? (darkMode ? 'text-white font-bold' : 'text-black font-bold') : (darkMode ? 'hover:text-neutral-200' : 'hover:text-neutral-600')}`}
           >
             <User className="w-5 h-5 stroke-[2px]" />
             <span className="text-[9px] font-semibold mt-1">Perfil</span>
@@ -3820,23 +3980,21 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         </div>
       )}
 
-        {/* --- DYNAMIC INTERACTIVE DETAIL MODALS --- */}
-        
-        {/* LOOK DETAILS DRAWER */}
-        <AnimatePresence>
-          {selectedLook && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      {/* LOOK DETAILS DRAWER */}
+      <AnimatePresence>
+        {selectedLook && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className={`rounded-[32px] w-full max-w-md max-h-[92vh] overflow-y-auto shadow-2xl relative flex flex-col text-left border ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-100 text-gray-900'}`}
             >
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="bg-white rounded-[32px] w-full max-w-md max-h-[92vh] overflow-y-auto shadow-2xl relative flex flex-col text-left border border-gray-100"
-              >
               {/* Confirm Deletion Overlay */}
               <AnimatePresence>
                 {isConfirmingDelete && (
@@ -3844,14 +4002,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-white/95 backdrop-blur-xs z-50 flex flex-col items-center justify-center p-6 text-center space-y-4"
+                    className={`absolute inset-0 backdrop-blur-xs z-50 flex flex-col items-center justify-center p-6 text-center space-y-4 ${darkMode ? 'bg-neutral-950/95 text-white' : 'bg-white/95 text-gray-900'}`}
                   >
                     <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center text-red-500 animate-bounce">
                       <Trash className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="font-display font-extrabold text-base text-gray-900">Excluir Post?</h4>
-                      <p className="text-gray-500 text-[11px] mt-1.5 leading-relaxed max-w-xs">
+                      <h4 className={`font-display font-extrabold text-base ${darkMode ? 'text-white' : 'text-gray-900'}`}>Excluir Post?</h4>
+                      <p className={`text-[11px] mt-1.5 leading-relaxed max-w-xs ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
                         Tem certeza de que deseja apagar esta composição do seu perfil? Esta ação não pode ser desfeita.
                       </p>
                     </div>
@@ -3870,7 +4028,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       <button 
                         onClick={() => setIsConfirmingDelete(false)}
                         disabled={isDeletingLook}
-                        className="w-full bg-neutral-100 hover:bg-neutral-200 text-gray-800 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                        className={`w-full py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${darkMode ? 'bg-neutral-800 hover:bg-neutral-700 text-white' : 'bg-neutral-100 hover:bg-neutral-200 text-gray-800'}`}
                       >
                         Cancelar
                       </button>
@@ -3880,41 +4038,33 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
               </AnimatePresence>
 
               {/* HIGH-FIDELITY SCREEN HEADER (Directly matches Screenshot 1) */}
-              <div className="px-4 py-3.5 border-b border-gray-100/80 flex items-center justify-between bg-white sticky top-0 z-20">
+              <div className={`px-4 py-3.5 border-b flex items-center justify-between sticky top-0 z-20 ${darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-100/80'}`}>
                 <div className="flex items-center space-x-2.5 min-w-0 flex-1">
                   <button 
                     onClick={() => setSelectedLook(null)}
-                    className="flex items-center justify-center w-8 h-8 rounded-full bg-neutral-50 hover:bg-neutral-100 text-gray-700 transition shrink-0 cursor-pointer"
+                    className={`flex items-center justify-center w-8 h-8 rounded-full transition shrink-0 cursor-pointer ${darkMode ? 'bg-neutral-800 hover:bg-neutral-700 text-white' : 'bg-neutral-50 hover:bg-neutral-100 text-gray-700'}`}
                   >
                     <ArrowLeft className="w-4.5 h-4.5 stroke-[2.5]" />
                   </button>
                   
-                  {/* User Avatar with pulsing Aura ring if they have followers */}
+                  {/* User Avatar */}
                   <div className="relative shrink-0">
                     <img 
                       src={selectedLook.userAvatar} 
-                      className={`w-8 h-8 rounded-full object-cover ${
-                        (() => {
-                          const userObj = selectedLook.userId === profile?.uid ? profile : allUsers.find(u => u.uid === selectedLook.userId);
-                          const followers = userObj?.followersCount || 0;
-                          return followers > 0 
-                            ? "ring-2 ring-emerald-400 ring-offset-1 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.35)]" 
-                            : "border border-gray-100";
-                        })()
-                      }`} 
+                      className={`w-8 h-8 rounded-full object-cover ${darkMode ? "border border-neutral-800" : "border border-gray-100"}`} 
                       alt="avatar" 
                     />
                   </div>
                   
-                  <span className="text-xs font-bold text-gray-900 truncate shrink-0 max-w-[120px]">@{selectedLook.username}</span>
-
+                  <span className={`text-xs font-bold truncate shrink-0 max-w-[120px] ${darkMode ? 'text-white' : 'text-gray-900'}`}>@{selectedLook.username}</span>
+                  
                   {/* Follow Button: Solid Green or Light Grey next to username */}
                   {profile && selectedLook.userId !== profile.uid && (
                     <button 
                       onClick={() => handleFollowUser(selectedLook.userId)}
                       className={`px-3.5 py-1.5 rounded-full text-[10px] font-bold transition shrink-0 cursor-pointer shadow-3xs ${
                         profile.following && profile.following.includes(selectedLook.userId)
-                          ? 'bg-neutral-100 text-gray-500 hover:bg-neutral-200/70 border border-gray-200'
+                          ? (darkMode ? 'bg-neutral-800 text-neutral-400 border border-neutral-700' : 'bg-neutral-100 text-gray-500 hover:bg-neutral-200/70 border border-gray-200')
                           : 'bg-[#1E3F20] hover:bg-neutral-800 text-white'
                       }`}
                     >
@@ -3928,14 +4078,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                   {profile && selectedLook.userId === profile.uid && (
                     <button 
                       onClick={() => setIsConfirmingDelete(true)}
-                      className="w-8 h-8 rounded-full bg-red-50 text-red-500 hover:bg-red-100 transition flex items-center justify-center cursor-pointer"
+                      className={`w-8 h-8 rounded-full transition flex items-center justify-center cursor-pointer ${darkMode ? 'bg-red-950/40 text-red-400 hover:bg-red-900/30' : 'bg-red-50 text-red-500 hover:bg-red-100'}`}
                       title="Apagar Post"
                     >
                       <Trash className="w-3.5 h-3.5" />
                     </button>
                   )}
 
-                  <button className="w-8 h-8 rounded-full hover:bg-neutral-50 text-gray-400 hover:text-black flex items-center justify-center transition cursor-pointer">
+                  <button className={`w-8 h-8 rounded-full flex items-center justify-center transition cursor-pointer ${darkMode ? 'hover:bg-neutral-800 text-neutral-400 hover:text-white' : 'hover:bg-neutral-50 text-gray-400 hover:text-black'}`}>
                     <span className="font-extrabold text-sm tracking-widest leading-none">...</span>
                   </button>
                 </div>
@@ -3983,12 +4133,12 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                 </div>
 
                 {/* Aesthetic Selector Tabs with green bottom indicator bar */}
-                <div className="border-b border-gray-100 flex items-center justify-around bg-white sticky top-[61px] z-10 select-none">
+                <div className={`border-b flex items-center justify-around sticky top-[61px] z-10 select-none ${darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'}`}>
                   <button 
                     onClick={() => setLookDetailTab('analytics')}
                     className={`flex-1 py-3.5 text-xs font-bold transition flex items-center justify-center space-x-2 border-b-2 cursor-pointer ${
                       lookDetailTab === 'analytics'
-                        ? 'border-[#1E3F20] text-[#1E3F20]'
+                        ? (darkMode ? 'border-emerald-500 text-emerald-400' : 'border-[#1E3F20] text-[#1E3F20]')
                         : 'border-transparent text-gray-400 hover:text-gray-600'
                     }`}
                   >
@@ -3999,13 +4149,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     onClick={() => setLookDetailTab('pieces')}
                     className={`flex-1 py-3.5 text-xs font-bold transition flex items-center justify-center space-x-2 border-b-2 cursor-pointer ${
                       lookDetailTab === 'pieces'
-                        ? 'border-[#1E3F20] text-[#1E3F20]'
+                        ? (darkMode ? 'border-emerald-500 text-emerald-400' : 'border-[#1E3F20] text-[#1E3F20]')
                         : 'border-transparent text-gray-400 hover:text-gray-600'
                     }`}
                   >
                     <span className="text-base leading-none">👕</span>
                     <span>Peças</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-neutral-100 text-neutral-500">
+                    <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${darkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-neutral-100 text-neutral-500'}`}>
                       {selectedLook.tags?.length || 0}
                     </span>
                   </button>
@@ -4020,7 +4170,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       
                       {/* Style Name and Metadata */}
                       <div className="space-y-2">
-                        <h3 className="font-sans font-black text-xl tracking-tight text-gray-950 leading-snug">
+                        <h3 className={`font-sans font-black text-xl tracking-tight leading-snug ${darkMode ? 'text-white' : 'text-gray-950'}`}>
                           {selectedLook.title}
                         </h3>
                         
@@ -4028,7 +4178,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           <span className="text-[10px] font-mono text-gray-400">
                             17 de julho de 2026
                           </span>
-                          <span className="bg-neutral-50 border border-gray-100 rounded-full px-2.5 py-1 text-[10px] font-bold text-gray-500/90 flex items-center gap-1 shadow-3xs">
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold flex items-center gap-1 shadow-3xs ${darkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-350' : 'bg-neutral-50 border-gray-100 text-gray-500/90'}`}>
                             <MapPin className="w-3 h-3 text-emerald-600" />
                             <span>{selectedLook.location || 'Fortaleza, Brazil'}</span>
                             <span className="text-[8px] text-gray-300 font-normal ml-0.5">&gt;</span>
@@ -4036,9 +4186,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                         </div>
 
                         {/* Description */}
-                        <p className="text-xs text-gray-600/90 font-light leading-relaxed pt-1">
+                        <p className={`text-xs font-light leading-relaxed pt-1 ${darkMode ? 'text-neutral-300' : 'text-gray-600/90'}`}>
                           {selectedLook.description}
-                          <span className="text-emerald-700 font-bold ml-1.5 cursor-pointer hover:underline">Ler mais</span>
+                          <span className={`font-bold ml-1.5 cursor-pointer hover:underline ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>Ler mais</span>
                         </p>
                       </div>
 
@@ -4058,14 +4208,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             return palette.map((col, idx) => (
                               <div 
                                 key={idx} 
-                                className="bg-neutral-50/50 hover:bg-neutral-50 transition border border-gray-100 rounded-2xl p-3 min-w-[145px] flex flex-col justify-between space-y-4 shrink-0 shadow-3xs relative overflow-hidden group cursor-pointer"
+                                className={`transition border rounded-2xl p-3 min-w-[145px] flex flex-col justify-between space-y-4 shrink-0 shadow-3xs relative overflow-hidden group cursor-pointer ${darkMode ? 'bg-neutral-950/50 border-neutral-800 hover:bg-neutral-850' : 'bg-neutral-50/50 hover:bg-neutral-50 border-gray-100'}`}
                               >
                                 <div className="flex justify-between items-start">
                                   <div className="w-6.5 h-6.5 rounded-full border border-black/5 flex shadow-2xs" style={{ backgroundColor: col.color }} />
-                                  <span className="text-sm font-black font-mono text-gray-900 leading-none mt-1">{col.pct}</span>
+                                  <span className={`text-sm font-black font-mono leading-none mt-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{col.pct}</span>
                                 </div>
                                 <div className="space-y-0.5">
-                                  <p className="text-[10px] font-bold text-gray-800 truncate leading-tight">{col.name}</p>
+                                  <p className={`text-[10px] font-bold truncate leading-tight ${darkMode ? 'text-neutral-200' : 'text-gray-800'}`}>{col.name}</p>
                                   <span className="text-[8px] font-mono text-gray-400 block">{col.hex}</span>
                                 </div>
                                 <span className="absolute right-2 bottom-2 text-[10px] text-gray-300 group-hover:text-emerald-600 transition">&gt;</span>
@@ -4076,7 +4226,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       </div>
 
                       {/* Aesthetics Segment lines (Matches Screenshot 2 bottom half) */}
-                      <div className="space-y-3.5 bg-neutral-50/40 border border-gray-100 p-4 rounded-[24px]">
+                      <div className={`space-y-3.5 p-4 rounded-[24px] border ${darkMode ? 'bg-neutral-950/40 border-neutral-800' : 'bg-neutral-50/40 border-gray-100'}`}>
                         <span className="text-[9px] font-mono font-black text-gray-400 uppercase tracking-widest block">
                           Vetores Estéticos
                         </span>
@@ -4089,7 +4239,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             { name: 'Gamine', filled: 1 }
                           ].map((ae, i) => (
                             <div key={i} className="flex items-center justify-between text-xs">
-                              <span className="font-medium text-gray-700">{ae.name}</span>
+                              <span className={`font-medium ${darkMode ? 'text-neutral-300' : 'text-gray-700'}`}>{ae.name}</span>
                               
                               {/* 4 Blocked Segment Bar */}
                               <div className="flex space-x-1 w-24">
@@ -4097,7 +4247,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                   <div 
                                     key={block} 
                                     className={`h-2 flex-1 rounded-sm transition-all duration-500 ${
-                                      block <= ae.filled ? 'bg-[#3E5C46]' : 'bg-gray-200/60'
+                                      block <= ae.filled ? (darkMode ? 'bg-emerald-600' : 'bg-[#3E5C46]') : (darkMode ? 'bg-neutral-800' : 'bg-gray-200/60')
                                     }`} 
                                   />
                                 ))}
@@ -4108,7 +4258,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       </div>
 
                       {/* Radar / Spider Hexagon Chart (Matches Screenshot 3) */}
-                      <div className="space-y-3 bg-neutral-50/40 border border-gray-100 p-4 rounded-[24px] flex flex-col items-center">
+                      <div className={`space-y-3 p-4 rounded-[24px] border flex flex-col items-center ${darkMode ? 'bg-neutral-950/40 border-neutral-800' : 'bg-neutral-50/40 border-gray-100'}`}>
                         <span className="text-[9px] font-mono font-black text-gray-400 uppercase tracking-widest block w-full text-left">
                           Impressão Geométrica
                         </span>
@@ -4129,7 +4279,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                   key={ri} 
                                   points={pointsStr} 
                                   fill="none" 
-                                  stroke="#E2E8F0" 
+                                  stroke={darkMode ? "#374151" : "#E2E8F0"} 
                                   strokeWidth="0.75" 
                                   strokeDasharray={ri === 2 ? "1,1" : "none"}
                                 />
@@ -4146,7 +4296,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                   key={idx} 
                                   x1="50" y1="50" 
                                   x2={x} y2={y} 
-                                  stroke="#E2E8F0" 
+                                  stroke={darkMode ? "#374151" : "#E2E8F0"} 
                                   strokeWidth="0.75" 
                                 />
                               );
@@ -4166,8 +4316,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                               return (
                                 <polygon 
                                   points={polygonPointsStr} 
-                                  fill="rgba(62, 92, 70, 0.22)" 
-                                  stroke="#3E5C46" 
+                                  fill={darkMode ? "rgba(16, 185, 129, 0.15)" : "rgba(62, 92, 70, 0.22)"} 
+                                  stroke={darkMode ? "#10B981" : "#3E5C46"} 
                                   strokeWidth="1.5" 
                                 />
                               );
@@ -4175,17 +4325,17 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           </svg>
 
                           {/* Dynamic Radar Positioning Labels with Space Grotesk size */}
-                          <span className="absolute top-[-8px] left-1/2 -translate-x-1/2 text-[9px] font-bold text-gray-500 font-mono tracking-wider">Casual</span>
-                          <span className="absolute top-[28px] right-[-14px] text-[9px] font-bold text-gray-500 font-mono tracking-wider">Sóbrio</span>
-                          <span className="absolute bottom-[28px] right-[-14px] text-[9px] font-bold text-gray-500 font-mono tracking-wider">Discreto</span>
-                          <span className="absolute bottom-[-8px] left-1/2 -translate-x-1/2 text-[9px] font-bold text-gray-500 font-mono tracking-wider">Formal</span>
-                          <span className="absolute bottom-[28px] left-[-14px] text-[9px] font-bold text-gray-500 font-mono tracking-wider">Vibrante</span>
-                          <span className="absolute top-[28px] left-[-14px] text-[9px] font-bold text-gray-500 font-mono tracking-wider">Marcante</span>
+                          <span className={`absolute top-[-8px] left-1/2 -translate-x-1/2 text-[9px] font-bold font-mono tracking-wider ${darkMode ? 'text-neutral-450' : 'text-gray-500'}`}>Casual</span>
+                          <span className={`absolute top-[28px] right-[-14px] text-[9px] font-bold font-mono tracking-wider ${darkMode ? 'text-neutral-450' : 'text-gray-500'}`}>Sóbrio</span>
+                          <span className={`absolute bottom-[28px] right-[-14px] text-[9px] font-bold font-mono tracking-wider ${darkMode ? 'text-neutral-450' : 'text-gray-500'}`}>Discreto</span>
+                          <span className={`absolute bottom-[-8px] left-1/2 -translate-x-1/2 text-[9px] font-bold font-mono tracking-wider ${darkMode ? 'text-neutral-450' : 'text-gray-500'}`}>Formal</span>
+                          <span className={`absolute bottom-[28px] left-[-14px] text-[9px] font-bold font-mono tracking-wider ${darkMode ? 'text-neutral-450' : 'text-gray-500'}`}>Vibrante</span>
+                          <span className={`absolute top-[28px] left-[-14px] text-[9px] font-bold font-mono tracking-wider ${darkMode ? 'text-neutral-450' : 'text-gray-500'}`}>Marcante</span>
                         </div>
                       </div>
 
                       {/* Real Active Comments Thread */}
-                      <div className="space-y-3.5 pt-4 border-t border-gray-100">
+                      <div className={`space-y-3.5 pt-4 border-t ${darkMode ? 'border-neutral-800' : 'border-gray-100'}`}>
                         <span className="text-[9px] font-mono font-black text-gray-400 uppercase tracking-widest block">
                           Comentários ({((selectedLook as any).comments || []).length})
                         </span>
@@ -4194,13 +4344,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           {(selectedLook as any).comments && (selectedLook as any).comments.length > 0 ? (
                             (selectedLook as any).comments.map((c: any) => (
                               <div key={c.id} className="flex items-start space-x-2.5 text-xs">
-                                <img src={c.avatar} className="w-7.5 h-7.5 rounded-full object-cover border border-gray-100" alt="avatar" />
-                                <div className="bg-neutral-50 p-2.5 rounded-[18px] flex-1">
+                                <img src={c.avatar} className={`w-7.5 h-7.5 rounded-full object-cover border ${darkMode ? 'border-neutral-800' : 'border-gray-100'}`} alt="avatar" />
+                                <div className={`p-2.5 rounded-[18px] flex-1 ${darkMode ? 'bg-neutral-800' : 'bg-neutral-50'}`}>
                                   <div className="flex justify-between items-center">
-                                    <span className="font-bold text-gray-900">@{c.username}</span>
+                                    <span className={`font-bold ${darkMode ? 'text-neutral-100' : 'text-gray-900'}`}>@{c.username}</span>
                                     <span className="text-[8px] text-gray-400 font-mono">{c.timestamp}</span>
                                   </div>
-                                  <p className="text-gray-600 mt-0.5 leading-snug font-light">{c.text}</p>
+                                  <p className={`mt-0.5 leading-snug font-light ${darkMode ? 'text-neutral-350' : 'text-gray-600'}`}>{c.text}</p>
                                 </div>
                               </div>
                             ))
@@ -4219,11 +4369,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleAddComment();
                               }}
-                              className="flex-1 bg-neutral-50 border border-gray-100 px-3.5 py-2.5 rounded-xl text-xs outline-none focus:bg-white focus:border-black transition"
+                              className={`flex-1 px-3.5 py-2.5 rounded-xl text-xs outline-none border transition ${darkMode ? 'bg-neutral-800 border-neutral-700 text-white focus:bg-neutral-900 focus:border-neutral-500' : 'bg-neutral-50 border-gray-100 focus:bg-white focus:border-black'}`}
                             />
                             <button 
                               onClick={handleAddComment}
-                              className="bg-black text-white px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-neutral-800 active:scale-95 transition cursor-pointer"
+                              className={`px-4 py-2.5 rounded-xl text-xs font-bold active:scale-95 transition cursor-pointer ${darkMode ? 'bg-white text-black hover:bg-neutral-250' : 'bg-black text-white hover:bg-neutral-800'}`}
                             >
                               Enviar
                             </button>
@@ -4268,9 +4418,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                     costPerWear: tag.price
                                   });
                                 }}
-                                className="bg-white rounded-2xl border border-gray-200/60 hover:border-gray-300 transition overflow-hidden shadow-3xs flex flex-col cursor-pointer text-left group"
+                                className={`rounded-2xl border transition overflow-hidden shadow-3xs flex flex-col cursor-pointer text-left group ${darkMode ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-700 text-white' : 'bg-white border-gray-200/60 hover:border-gray-300 text-gray-900'}`}
                               >
-                                <div className="aspect-square bg-neutral-50 relative overflow-hidden flex items-center justify-center p-2.5">
+                                <div className={`aspect-square relative overflow-hidden flex items-center justify-center p-2.5 ${darkMode ? 'bg-neutral-950' : 'bg-neutral-50'}`}>
                                   <img 
                                     src={finalImage} 
                                     className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition duration-300" 
@@ -4292,16 +4442,16 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                     <span className="text-[9px] font-mono text-gray-400 uppercase tracking-wide block">
                                       {tag.category || 'Peça'}
                                     </span>
-                                    <p className="font-bold text-gray-900 text-xs leading-snug truncate mt-0.5">
+                                    <p className={`font-bold text-xs leading-snug truncate mt-0.5 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                       {tag.name}
                                     </p>
-                                    <span className="text-[9px] text-gray-500 block truncate font-light mt-0.5">
+                                    <span className={`text-[9px] block truncate font-light mt-0.5 ${darkMode ? 'text-neutral-450' : 'text-gray-500'}`}>
                                       {tag.brand || 'Marca'}
                                     </span>
                                   </div>
 
-                                  <div className="flex items-center justify-between border-t border-gray-100 pt-1.5 mt-1 text-[10px]">
-                                    <span className="text-emerald-600 font-bold font-mono">
+                                  <div className={`flex items-center justify-between border-t pt-1.5 mt-1 text-[10px] ${darkMode ? 'border-neutral-800' : 'border-gray-100'}`}>
+                                    <span className={`font-bold font-mono ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
                                       R$ {tag.price}
                                     </span>
                                     
@@ -4324,7 +4474,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                           });
                                           setCheckoutSeller(`@${selectedLook.username}`);
                                         }}
-                                        className="bg-emerald-50 hover:bg-emerald-100/80 text-emerald-800 px-2 py-0.8 rounded text-[9px] font-bold transition cursor-pointer"
+                                        className={`px-2 py-0.8 rounded text-[9px] font-bold transition cursor-pointer ${darkMode ? 'bg-emerald-950 text-emerald-400 hover:bg-emerald-900' : 'bg-emerald-50 hover:bg-emerald-100/80 text-emerald-800'}`}
                                       >
                                         Comprar
                                       </button>
