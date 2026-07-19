@@ -4,6 +4,7 @@ import { ArrowRight, Check, X, MapPin, Search, Plus, Bell, Shield, EyeOff, Layou
 import { db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { UserProfile } from '../types';
+import { WORLD_COUNTRIES } from '../lib/countries';
 
 interface OnboardingFlowProps {
   profile: UserProfile;
@@ -12,18 +13,7 @@ interface OnboardingFlowProps {
   onLanguageChange: (lang: string) => void;
 }
 
-const CITIES_LIST = [
-  { city: 'San Antonio', country: 'United States', code: 'US', lang: 'English', flag: '🇺🇸' },
-  { city: 'Tunis', country: 'Tunisia', code: 'TN', lang: 'Français', flag: '🇹🇳' },
-  { city: 'San Francisco', country: 'United States', code: 'US', lang: 'English', flag: '🇺🇸' },
-  { city: 'Heredia', country: 'Costa Rica', code: 'CR', lang: 'Español', flag: '🇨🇷' },
-  { city: 'Cluj-Napoca', country: 'Romania', code: 'RO', lang: 'Română', flag: '🇷🇴' },
-  { city: 'Taichung', country: 'Taiwan', code: 'TW', lang: '繁體中文', flag: '🇹🇼' },
-  { city: 'Singapore', country: 'Singapore', code: 'SG', lang: 'English', flag: '🇸🇬' },
-  { city: 'Strasbourg', country: 'France', code: 'FR', lang: 'Français', flag: '🇫🇷' },
-  { city: 'Nantes', country: 'France', code: 'FR', lang: 'Français', flag: '🇫🇷' },
-  { city: 'Chennai', country: 'India', code: 'IN', lang: 'English', flag: '🇮🇳' },
-];
+const CITIES_LIST = WORLD_COUNTRIES;
 
 const ONBOARDING_IMAGES = [
   'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=600',
@@ -155,23 +145,32 @@ export default function OnboardingFlow({ profile, onComplete, onLogout, onLangua
       const reader = new FileReader();
       
       reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        const apiRes = await fetch('/api/remove-bg', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ imageBase64: base64data })
-        });
-        
-        const apiData = await apiRes.json();
-        if (apiData.imageBase64) {
-          setCutoutImage(apiData.imageBase64);
-        } else {
+        try {
+          const base64data = reader.result as string;
+          const apiRes = await fetch('/api/remove-bg', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ imageBase64: base64data })
+          });
+          
+          if (!apiRes.ok) {
+            throw new Error(`HTTP error! status: ${apiRes.status}`);
+          }
+          const apiData = await apiRes.json();
+          if (apiData && apiData.imageBase64) {
+            setCutoutImage(apiData.imageBase64);
+          } else {
+            setCutoutImage(chosenImage); // Fallback if API fails
+          }
+        } catch (innerErr) {
+          console.warn("Inner background removal error:", innerErr);
           setCutoutImage(chosenImage); // Fallback if API fails
+        } finally {
+          setIsRemovingBg(false);
+          setStep(7);
         }
-        setIsRemovingBg(false);
-        setStep(7);
       };
       reader.readAsDataURL(blob);
     } catch (err) {
