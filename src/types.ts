@@ -52,6 +52,7 @@ export interface UserProfile {
   uid: string;
   username: string;
   displayName: string;
+  name?: string;
   avatar: string;
   bio: string;
   location: string;
@@ -64,6 +65,7 @@ export interface UserProfile {
   whatsapp?: string;
   following?: string[];
   followers?: string[];
+  onboarded?: boolean;
 }
 
 export interface AppNotification {

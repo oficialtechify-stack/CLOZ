@@ -15,6 +15,7 @@ import {
   onSnapshot, query, where, orderBy, deleteDoc, limit
 } from 'firebase/firestore';
 import AuthScreen from './AuthScreen';
+import OnboardingFlow from './OnboardingFlow';
 
 const cropImagePiece = (
   imageSrc: string,
@@ -1759,6 +1760,22 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         setProfile(prof);
         setCurrentUser(auth.currentUser || { uid: prof.uid, email: (prof as any).email || `${prof.username}@cloz.app` });
       }} />
+    );
+  }
+
+  if (profile && !profile.onboarded) {
+    return (
+      <OnboardingFlow 
+        profile={profile}
+        onComplete={(updatedProfile) => {
+          setProfile(updatedProfile);
+          setActiveTab('profile');
+        }}
+        onLogout={handleLogout}
+        onLanguageChange={(newLang) => {
+          setLanguage(newLang);
+        }}
+      />
     );
   }
 

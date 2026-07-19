@@ -271,10 +271,10 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
   };
 
   return (
-    <div className="absolute inset-0 z-30 flex flex-col justify-between overflow-hidden text-white bg-black rounded-3xl select-none">
+    <div className="fixed inset-0 w-full h-full min-h-screen z-50 flex flex-col justify-between overflow-y-auto text-white bg-black select-none">
       
       {/* Animated Streetwear Backgrounds with overlay */}
-      <div className="absolute inset-0 z-0 overflow-hidden rounded-3xl">
+      <div className="absolute inset-0 z-0 overflow-hidden">
         <AnimatePresence mode="wait">
           <motion.img
             key={bgIndex}
@@ -307,12 +307,12 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       </div>
 
       {/* Bottom Main Content exact layout */}
-      <div className="mt-auto w-full z-20 px-6.5 pb-6 pt-20 bg-gradient-to-t from-black via-black/85 to-transparent flex flex-col">
+      <div className="mt-auto w-full max-w-md mx-auto z-20 px-6.5 pb-6 pt-20 bg-gradient-to-t from-black via-black/85 to-transparent flex flex-col">
         
         {/* Title and brand */}
         <div className="mb-6.5 space-y-1.5 text-left">
           <span className="text-[10px] font-mono tracking-[0.25em] text-white/75 font-black block leading-none">
-            LEKONDO
+            CLOZ
           </span>
           <h1 className="font-display font-black text-4.5xl text-white tracking-tight leading-none">
             Third Space <br />
@@ -371,9 +371,9 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
       {/* Beautiful Modal Bottom Sheet for Email authentication flow */}
       <AnimatePresence>
         {showEmailModal && (
-          <div className="absolute inset-0 z-40 bg-black/65 backdrop-blur-xs flex flex-col justify-end rounded-3xl">
+          <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex flex-col justify-end">
             {/* Overlay background click to close */}
-            <div className="absolute inset-0 z-0" onClick={() => setShowEmailModal(false)} />
+            <div className="absolute inset-0 z-0 bg-black/40" onClick={() => setShowEmailModal(false)} />
 
             {/* Slide up sheet */}
             <motion.div
@@ -381,7 +381,7 @@ export default function AuthScreen({ onAuthSuccess }: AuthScreenProps) {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 26, stiffness: 220 }}
-              className="relative z-10 w-full max-h-[85%] bg-[#121212]/95 backdrop-blur-2xl border-t border-white/12 rounded-t-3xl p-6 flex flex-col overflow-y-auto"
+              className="relative z-10 w-full max-w-md mx-auto max-h-[85%] bg-[#121212]/95 backdrop-blur-2xl border-t border-white/12 rounded-t-3xl p-6 flex flex-col overflow-y-auto"
             >
               {/* Grab bar */}
               <div 

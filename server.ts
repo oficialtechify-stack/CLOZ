@@ -106,6 +106,54 @@ async function generateContentWithRetry(base64Data: string, mimeType: string, pr
 }
 
 // API routes FIRST
+app.post("/api/remove-bg", async (req, res) => {
+  try {
+    const { imageBase64 } = req.body;
+    if (!imageBase64) {
+      return res.status(400).json({ error: "No image base64 provided" });
+    }
+
+    // Convert base64 to buffer
+    const match = imageBase64.match(/^data:(image\/\w+);base64,(.+)$/);
+    let base64Data = imageBase64;
+    if (match) {
+      base64Data = match[2];
+    }
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const photoroomKey = process.env.PHOTOROOM_API_KEY;
+    if (!photoroomKey) {
+      console.error("Missing PHOTOROOM_API_KEY environment variable.");
+      return res.status(500).json({ error: "Chave de API do Photoroom não configurada no servidor." });
+    }
+
+    const formData = new FormData();
+    const blob = new Blob([buffer], { type: "image/png" });
+    formData.append("image_file", blob, "image.png");
+
+    const response = await fetch("https://sdk.photoroom.com/v1/segment", {
+      method: "POST",
+      headers: {
+        "x-api-key": photoroomKey
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error("Photoroom error response:", errText);
+      throw new Error(`Photoroom API failed: ${response.status} - ${errText}`);
+    }
+
+    const resBuffer = await response.arrayBuffer();
+    const resBase64 = Buffer.from(resBuffer).toString("base64");
+    res.json({ imageBase64: `data:image/png;base64,${resBase64}` });
+  } catch (error: any) {
+    console.error("Error in Photoroom remove-bg:", error);
+    res.json({ error: error.message || "Failed to remove background", useFallback: true });
+  }
+});
+
 app.post("/api/gemini/analyze-look", async (req, res) => {
   try {
     const { imageBase64 } = req.body;

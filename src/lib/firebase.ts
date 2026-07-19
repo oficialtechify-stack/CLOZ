@@ -48,7 +48,7 @@ async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration: client appears to be offline.", error);
+      console.warn("Please check your Firebase configuration: client appears to be offline.", error);
     } else {
       console.log("Firebase initialized successfully. Test document ping complete.");
     }
