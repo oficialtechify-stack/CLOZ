@@ -69,7 +69,7 @@ const cropImagePiece = (
           xStart, yStart, cropW, cropH,
           dx, dy, drawW, drawH
         );
-        resolve(canvas.toDataURL("image/jpeg", 0.9));
+        resolve(canvas.toDataURL("image/jpeg", 0.70));
       } catch (err) {
         console.error("Canvas drawImage error:", err);
         resolve(imageSrc);
@@ -1378,8 +1378,75 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
     };
   }, []);
 
-  // List of mock/simulated user IDs to exclude from the platform
+  // Heartbeat hook to keep user online status and lastActive timestamp updated in Firestore in real-time
+  useEffect(() => {
+    if (!profile || !profile.uid || profile.uid.startsWith('guest_')) return;
+
+    const updateHeartbeat = async () => {
+      try {
+        const profileRef = doc(db, 'users', profile.uid);
+        await updateDoc(profileRef, {
+          isOnline: true,
+          lastActive: new Date().toISOString()
+        });
+      } catch (e) {
+        console.warn("Heartbeat update failed (might be offline or fallback):", e);
+      }
+    };
+
+    // Run immediately and then every 3 minutes
+    updateHeartbeat();
+    const heartbeatInterval = setInterval(updateHeartbeat, 3 * 60 * 1000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, [profile?.uid]);
+
+  // List of mock/simulated user IDs (no longer filtered out so they appear as real community users)
   const MOCK_USER_IDS = ['rickzinxx', 'thiithisan', 'beanascime', 'mihcacho', 'bfr', 'li1', 'thiithisan..', 'beanascime..'];
+
+  // Auto-seed Firestore with beautiful initial community members, looks, and closet items if database is empty
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const runDatabaseSeeding = async () => {
+      try {
+        const looksSnap = await getDocs(collection(db, 'looks'));
+        if (looksSnap.empty) {
+          console.log("Cloz Firestore looks collection is empty. Auto-seeding community curators, looks, and closet items...");
+
+          const { SEED_OTHER_USERS, SEED_LOOKS, SEED_CLOSET } = await import('../data');
+
+          // 1. Seed users
+          for (const u of SEED_OTHER_USERS) {
+            await setDoc(doc(db, 'users', u.uid), {
+              ...u,
+              isOnline: false,
+              lastActive: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000).toISOString()
+            });
+          }
+
+          // 2. Seed looks
+          for (const l of SEED_LOOKS) {
+            await setDoc(doc(db, 'looks', l.id), {
+              ...l,
+              comments: []
+            });
+          }
+
+          // 3. Seed closet items
+          for (const c of SEED_CLOSET) {
+            await setDoc(doc(db, 'closet', c.id), c);
+          }
+
+          console.log("Cloz Firestore database seeded successfully with elegant high-fashion presets!");
+        }
+      } catch (err) {
+        console.warn("Auto-seeding of Firestore failed (likely due to offline fallback or permissions):", err);
+      }
+    };
+
+    runDatabaseSeeding();
+  }, [currentUser]);
 
   // Sync collections in real-time once user is logged in
   useEffect(() => {
@@ -1403,13 +1470,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         return b.id.localeCompare(a.id);
       });
 
-      // Filter out any looks from mock/simulated users
-      const filteredLooks = loadedLooks.filter(look => 
-        look && 
-        look.userId && 
-        !MOCK_USER_IDS.includes(look.userId) && 
-        !look.userId.startsWith('mock_')
-      );
+      // Show all looks stored in the database for a fully active global feed
+      const filteredLooks = loadedLooks.filter(look => look && look.userId);
       setLooks(filteredLooks);
     }, (error) => {
       console.error("Firestore looks query failed.", error);
@@ -1422,13 +1484,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         id: doc.id,
         ...doc.data()
       })) as ClosetItem[];
-      // Filter out items belonging to mock/simulated users
-      const filteredCloset = loadedCloset.filter(item => 
-        item && 
-        item.userId && 
-        !MOCK_USER_IDS.includes(item.userId) && 
-        !item.userId.startsWith('mock_')
-      );
+      
+      // Keep all closet items in memory so they can be viewed/filtered in user profiles
+      const filteredCloset = loadedCloset.filter(item => item && item.userId);
       setCloset(filteredCloset);
     }, (error) => {
       console.error("Firestore closet query failed.", error);
@@ -1452,14 +1510,12 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         uid: doc.id,
         ...doc.data()
       })) as UserProfile[];
-      // Filter out mock/fake test prefixes and specified mock UIDs
+      
+      // Filter out only anonymous guest_ UIDs to keep the leaderboard/user lists professional and curated
       const filteredUsers = loadedUsers.filter(u => 
         u && 
         u.uid && 
-        !u.uid.startsWith('mock_') && 
-        !u.uid.startsWith('guest_') &&
-        !MOCK_USER_IDS.includes(u.uid) &&
-        (!u.username || !MOCK_USER_IDS.includes(u.username.toLowerCase()))
+        !u.uid.startsWith('guest_')
       );
       setAllUsers(filteredUsers);
     }, (error) => {
@@ -1636,7 +1692,24 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         for (let i = 0; i < finalTags.length; i++) {
           const tag = finalTags[i];
           if (!tag.croppedImage) {
-            tag.croppedImage = lookImage;
+            // Crop a neat 30% area of the look centered on the manual tag coordinates
+            const tx = tag.x ?? 50;
+            const ty = tag.y ?? 50;
+            const size = 15; // 15% bounding box half-width
+            const ymin = Math.max(0, ty - size) * 10;
+            const ymax = Math.min(100, ty + size) * 10;
+            const xmin = Math.max(0, tx - size) * 10;
+            const xmax = Math.min(100, tx + size) * 10;
+            try {
+              tag.croppedImage = await cropImagePiece(lookImage, [ymin, xmin, ymax, xmax]);
+            } catch (cropErr) {
+              console.warn("Manual crop failed, using compressed fallback:", cropErr);
+              try {
+                tag.croppedImage = await compressImageBase64(lookImage, 180, 0.60);
+              } catch (e) {
+                tag.croppedImage = lookImage; // extreme fallback
+              }
+            }
           }
           tag.cleanEcomImage = getCleanEcomImage(tag.category, tag.name);
         }
@@ -2013,14 +2086,64 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
                 {/* Community Announcement banner */}
                 {feedSubTab === 'community' ? (
-                  <div className={`m-3 p-3.5 rounded-2xl border flex flex-col gap-1 text-left animate-fadeIn ${darkMode ? 'bg-neutral-850/40 border-neutral-800' : 'bg-neutral-50 border-neutral-150'}`}>
-                    <div className={`flex items-center space-x-1.5 text-[10px] font-mono uppercase tracking-wider font-bold ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
-                      <span>👥 CURADORES E CRIADORES DE TENDÊNCIA</span>
+                  <>
+                    <div className={`m-3 p-3.5 rounded-2xl border flex flex-col gap-1 text-left animate-fadeIn ${darkMode ? 'bg-neutral-850/40 border-neutral-800' : 'bg-neutral-50 border-neutral-150'}`}>
+                      <div className={`flex items-center space-x-1.5 text-[10px] font-mono uppercase tracking-wider font-bold ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
+                        <span>👥 CURADORES E CRIADORES DE TENDÊNCIA</span>
+                      </div>
+                      <p className={`text-[11px] leading-snug ${darkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
+                        Conecte-se com membros reais da nossa comunidade de moda autoral. Explore looks, siga criadores e compartilhe seu closet.
+                      </p>
                     </div>
-                    <p className={`text-[11px] leading-snug ${darkMode ? 'text-neutral-300' : 'text-gray-600'}`}>
-                      Conecte-se com membros reais da nossa comunidade de moda autoral. Explore looks, siga criadores e compartilhe seu closet.
-                    </p>
-                  </div>
+
+                    {/* Online Users List */}
+                    {(() => {
+                      const onlineUsersList = allUsers.filter(u => 
+                        u && 
+                        u.uid && 
+                        u.uid !== profile?.uid && 
+                        (u.isOnline || (u.lastActive && (Date.now() - new Date(u.lastActive).getTime() < 30 * 60 * 1000)))
+                      );
+                      return (
+                        <div className="mx-3 mb-2 text-left animate-fadeIn">
+                          <div className="flex items-center justify-between mb-2 px-1">
+                            <span className={`text-[10px] font-mono uppercase tracking-wider font-bold flex items-center space-x-1 ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse mr-1"></span>
+                              <span>ONLINE AGORA ({onlineUsersList.length})</span>
+                            </span>
+                          </div>
+                          {onlineUsersList.length === 0 ? (
+                            <div className={`p-3.5 rounded-2xl border text-center text-xs font-medium ${darkMode ? 'bg-neutral-850/20 border-neutral-800/50 text-neutral-400' : 'bg-neutral-50/50 border-neutral-100 text-gray-400'}`}>
+                              Nenhum outro curador cadastrado está ativo agora.
+                            </div>
+                          ) : (
+                            <div className="flex space-x-3 overflow-x-auto pb-2 pt-1 scrollbar-none">
+                              {onlineUsersList.map(u => (
+                                <div
+                                  key={u.uid}
+                                  onClick={() => setSelectedUserProfile(u)}
+                                  className="flex flex-col items-center space-y-1 cursor-pointer shrink-0 group"
+                                >
+                                  <div className="relative">
+                                    <img
+                                      src={u.avatar}
+                                      className={`w-11 h-11 rounded-full object-cover border-2 transition-transform duration-300 group-hover:scale-105 ${darkMode ? 'border-neutral-800' : 'border-gray-100'}`}
+                                      referrerPolicy="no-referrer"
+                                      alt={u.displayName}
+                                    />
+                                    <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border border-white" title="Online"></span>
+                                  </div>
+                                  <span className={`text-[9px] font-medium max-w-[55px] truncate text-center ${darkMode ? 'text-neutral-300' : 'text-gray-700'}`}>
+                                    {u.displayName.split(' ')[0]}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </>
                 ) : null}
 
                 {/* Filters Row */}
