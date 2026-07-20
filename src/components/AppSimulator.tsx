@@ -2396,6 +2396,18 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                   </button>
                 </div>
 
+                {aiAnalysisError && (
+                  <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 text-red-700 text-xs flex flex-col space-y-1.5 animate-fadeIn">
+                    <span className="font-bold flex items-center gap-1.5">
+                      ⚠️ Erro na Publicação:
+                    </span>
+                    <span className="font-mono text-[10.5px] break-all bg-white/60 p-2 rounded-xl border border-red-100">{aiAnalysisError}</span>
+                    <span className="text-[10px] text-gray-500 mt-1 leading-relaxed">
+                      Dica: Se você está visualizando na Vercel, certifique-se de configurar a variável de ambiente <code className="bg-gray-100 px-1 py-0.5 rounded font-mono font-bold text-red-800">GEMINI_API_KEY</code> nas configurações da sua Vercel, ou que o tamanho da imagem de base64/payload não excedeu os limites do servidor.
+                    </span>
+                  </div>
+                )}
+
                 <div className="space-y-3.5">
                   {/* Outfit Photo (with click to tag) */}
                   <div className="space-y-1">
