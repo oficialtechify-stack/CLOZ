@@ -1260,7 +1260,10 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         try {
           const profileSnap = await getDoc(profileRef);
           if (profileSnap && profileSnap.exists()) {
-            loadedProfile = profileSnap.data() as UserProfile;
+            loadedProfile = {
+              uid: profileSnap.id,
+              ...(profileSnap.data() as UserProfile)
+            };
           }
         } catch (firestoreError) {
           console.warn("Firestore error or offline on auth state change:", firestoreError);
@@ -1298,6 +1301,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
         const sanitized = {
           ...loadedProfile,
+          uid: loadedProfile.uid || user.uid,
           following: loadedProfile.following || [],
           followers: loadedProfile.followers || [],
           followersCount: loadedProfile.followersCount ?? 0,
@@ -1312,6 +1316,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
             const profData = snap.data() as UserProfile;
             const san = {
               ...profData,
+              uid: snap.id,
               following: profData.following || [],
               followers: profData.followers || [],
               followersCount: profData.followersCount ?? 0,
@@ -1584,6 +1589,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
     let finalDesc = lookDesc;
     
     try {
+      const userId = profile.uid || currentUser?.uid;
+      if (!userId) {
+        throw new Error('Identificação do usuário (userId) não encontrada. Por favor, saia da conta e faça login novamente.');
+      }
+
       if (finalTags.length === 0) {
         // No AI/Gemini analysis step. Just assign default title & description if they are empty
         if (!finalTitle) {
@@ -1609,9 +1619,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
       const lookId = 'look_' + Date.now();
       const newLook: Look = {
         id: lookId,
-        userId: profile.uid,
-        username: profile.username,
-        userAvatar: profile.avatar,
+        userId: userId,
+        username: profile.username || 'usuário',
+        userAvatar: profile.avatar || '',
         image: lookImage,
         title: finalTitle || 'Registro de Outfit',
         description: finalDesc || 'Minha nova composição do dia.',
@@ -1622,8 +1632,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         auraScore: 0,
         date: new Date().toISOString().split('T')[0],
         commentsCount: 0,
-        location: lookLocation,
-        aesthetics: lookAesthetics
+        location: lookLocation || 'Brasil',
+        aesthetics: lookAesthetics || []
       };
 
       // Save look in Firestore
@@ -1644,7 +1654,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         
         const newItem: ClosetItem = {
           id: itemId,
-          userId: profile.uid,
+          userId: userId,
           name: tag.name,
           category: tag.category,
           brand: tag.brand,
