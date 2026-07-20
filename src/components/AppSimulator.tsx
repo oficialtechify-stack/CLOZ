@@ -1356,83 +1356,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
     };
   }, []);
 
-  // One-time check to seed Firestore database with high-quality fashion posts and profiles if empty
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const seedDatabaseIfNeeded = async () => {
-      try {
-        const looksSnap = await getDocs(collection(db, 'looks'));
-        if (looksSnap.empty) {
-          console.log("Firestore looks collection is empty. Seeding initial community content...");
-          const { SEED_PROFILE, SEED_OTHER_USERS, SEED_LOOKS, SEED_CLOSET } = await import('../data');
-          
-          // 1. Seed users profiles
-          const seedUsers = [SEED_PROFILE, ...SEED_OTHER_USERS];
-          for (const u of seedUsers) {
-            await setDoc(doc(db, 'users', u.uid), {
-              uid: u.uid,
-              username: u.username,
-              displayName: u.displayName,
-              avatar: u.avatar,
-              bio: u.bio || '',
-              location: u.location || '',
-              followersCount: u.followersCount ?? 0,
-              followingCount: u.followingCount ?? 0,
-              auraScore: u.auraScore ?? 0,
-              totalOutfits: u.totalOutfits ?? 0,
-              onboarded: true
-            }, { merge: true });
-          }
-
-          // 2. Seed looks
-          for (const l of SEED_LOOKS) {
-            await setDoc(doc(db, 'looks', l.id), {
-              id: l.id,
-              userId: l.userId,
-              username: l.username,
-              userAvatar: l.userAvatar,
-              image: l.image,
-              title: l.title,
-              description: l.description,
-              tags: l.tags || [],
-              likes: l.likes ?? 0,
-              likedBy: l.likedBy || [],
-              views: l.views ?? 0,
-              auraScore: l.auraScore ?? 0,
-              date: l.date,
-              commentsCount: l.commentsCount ?? 0,
-              location: l.location || '',
-              aesthetics: l.aesthetics || [],
-              comments: []
-            }, { merge: true });
-          }
-
-          // 3. Seed closet items
-          for (const c of SEED_CLOSET) {
-            await setDoc(doc(db, 'closet', c.id), {
-              id: c.id,
-              userId: c.userId,
-              name: c.name,
-              category: c.category,
-              brand: c.brand,
-              price: c.price,
-              image: c.image,
-              forSale: c.forSale ?? false,
-              boughtAt: c.boughtAt || new Date().toISOString().split('T')[0],
-              timesWorn: c.timesWorn ?? 1,
-              costPerWear: c.costPerWear ?? c.price
-            }, { merge: true });
-          }
-          console.log("Firestore successfully seeded with community users and looks!");
-        }
-      } catch (err) {
-        console.warn("Firestore seeding bypassed or failed:", err);
-      }
-    };
-
-    seedDatabaseIfNeeded();
-  }, [currentUser]);
+  // List of mock/simulated user IDs to exclude from the platform
+  const MOCK_USER_IDS = ['rickzinxx', 'thiithisan', 'beanascime', 'mihcacho', 'bfr', 'li1', 'thiithisan..', 'beanascime..'];
 
   // Sync collections in real-time once user is logged in
   useEffect(() => {
@@ -1445,7 +1370,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         id: doc.id,
         ...doc.data()
       })) as Look[];
-      setLooks(loadedLooks);
+      // Filter out any looks from mock/simulated users
+      const filteredLooks = loadedLooks.filter(look => 
+        look && 
+        look.userId && 
+        !MOCK_USER_IDS.includes(look.userId) && 
+        !look.userId.startsWith('mock_')
+      );
+      setLooks(filteredLooks);
     }, (error) => {
       console.error("Firestore looks query failed.", error);
     });
@@ -1457,7 +1389,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         id: doc.id,
         ...doc.data()
       })) as ClosetItem[];
-      setCloset(loadedCloset);
+      // Filter out items belonging to mock/simulated users
+      const filteredCloset = loadedCloset.filter(item => 
+        item && 
+        item.userId && 
+        !MOCK_USER_IDS.includes(item.userId) && 
+        !item.userId.startsWith('mock_')
+      );
+      setCloset(filteredCloset);
     }, (error) => {
       console.error("Firestore closet query failed.", error);
     });
@@ -1473,15 +1412,22 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
       console.error("Firestore notifications query failed.", error);
     });
 
-    // 4. Listen to users collection for leaderboard
+    // 4. Listen to users collection for leaderboard and user list
     const usersQuery = query(collection(db, 'users'));
     const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
       const loadedUsers = snapshot.docs.map(doc => ({
         uid: doc.id,
         ...doc.data()
       })) as UserProfile[];
-      // Filter out only mock test prefix
-      const filteredUsers = loadedUsers.filter(u => !u.uid.startsWith('mock_'));
+      // Filter out mock/fake test prefixes and specified mock UIDs
+      const filteredUsers = loadedUsers.filter(u => 
+        u && 
+        u.uid && 
+        !u.uid.startsWith('mock_') && 
+        !u.uid.startsWith('guest_') &&
+        !MOCK_USER_IDS.includes(u.uid) &&
+        (!u.username || !MOCK_USER_IDS.includes(u.username.toLowerCase()))
+      );
       setAllUsers(filteredUsers);
     }, (error) => {
       console.error("Firestore users query failed.", error);
