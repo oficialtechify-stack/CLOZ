@@ -1584,68 +1584,16 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
     let finalDesc = lookDesc;
     
     try {
-      // 1. If user hasn't analyzed/tagged yet, run the full automatic Vision AI pipeline
       if (finalTags.length === 0) {
-        setAnalysisStep('Analisando o visual com Visão Computacional...');
-        
-        const response = await fetch('/api/gemini/analyze-look', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ imageBase64: lookImage })
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Falha ao analisar o look.');
+        // No AI/Gemini analysis step. Just assign default title & description if they are empty
+        if (!finalTitle) {
+          finalTitle = 'Registro de Outfit';
         }
-
-        const data = await response.json();
-        if (data.items && Array.isArray(data.items)) {
-          setAnalysisStep('Identificando peças de roupa e calçados...');
-          
-          for (let i = 0; i < data.items.length; i++) {
-            const item = data.items[i];
-            
-            setAnalysisStep(`Separando e recortando: ${item.name}...`);
-            
-            let croppedUrl = '';
-            try {
-              croppedUrl = await cropImagePiece(lookImage, item.box);
-            } catch (cropErr) {
-              console.error("Erro ao recortar peça " + item.name + ":", cropErr);
-              croppedUrl = lookImage; // Fallback
-            }
-
-            // Fetch a clean, professional, internet-like flat-lay image corresponding to the category
-            const identicalCleanUrl = getCleanEcomImage(item.category, item.name);
-
-            finalTags.push({
-              id: 'tag_ai_' + i + '_' + Date.now(),
-              name: item.name,
-              brand: item.brand || 'Cloz',
-              price: parseFloat(item.price) || 150,
-              forSale: true,
-              category: item.category as any,
-              x: Math.round(item.x_center),
-              y: Math.round(item.y_center),
-              croppedImage: croppedUrl,
-              cleanEcomImage: identicalCleanUrl // store clean ecom identical image representation
-            });
-          }
-          
-          if (!finalTitle && finalTags.length > 0) {
-            const mainCategories = Array.from(new Set(finalTags.map(t => t.category))).join(' & ');
-            finalTitle = `Outfit com ${mainCategories}`;
-          }
-          if (!finalDesc) {
-            const itemsList = finalTags.map(t => `${t.name} (${t.brand})`).join(', ');
-            finalDesc = `Look inteligente contendo: ${itemsList}.`;
-          }
+        if (!finalDesc) {
+          finalDesc = 'Minha nova composição do dia.';
         }
       } else {
-        // If the user has some manual tags, let's map them to clean internet e-commerce images as well!
+        // Process manual tags
         setAnalysisStep('Processando suas tags...');
         for (let i = 0; i < finalTags.length; i++) {
           const tag = finalTags[i];
@@ -2524,11 +2472,11 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           )}
                         </AnimatePresence>
 
-                        {/* AI Automated Notice */}
+                        {/* Public Upload Notice */}
                         <div className="absolute bottom-4 left-4 right-4 z-40 pointer-events-none flex justify-center">
                           <div className="bg-black/75 backdrop-blur-md text-white text-[9px] py-1.5 px-3 rounded-full font-bold flex items-center gap-1.5 shadow-lg border border-white/10">
                             <Sparkles className="w-2.5 h-2.5 text-amber-300 animate-pulse" />
-                            <span>Suas peças serão cortadas e salvas ao publicar! ✨</span>
+                            <span>Sua composição será publicada instantaneamente! ✨</span>
                           </div>
                         </div>
                       </div>
