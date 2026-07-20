@@ -66,6 +66,8 @@ export interface UserProfile {
   following?: string[];
   followers?: string[];
   onboarded?: boolean;
+  isOnline?: boolean;
+  lastActive?: string;
 }
 
 export interface AppNotification {

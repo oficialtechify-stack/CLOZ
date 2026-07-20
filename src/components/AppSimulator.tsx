@@ -1222,6 +1222,13 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
 
   const handleLogout = async () => {
     try {
+      if (profile && !profile.uid.startsWith('guest_')) {
+        const profileRef = doc(db, 'users', profile.uid);
+        await updateDoc(profileRef, {
+          isOnline: false,
+          lastActive: new Date().toISOString()
+        }).catch(e => console.warn("Failed background updateDoc for offline state on logout:", e));
+      }
       await signOut(auth);
     } catch (err) {
       console.warn("SignOut error bypassed:", err);
@@ -1291,12 +1298,20 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
             auraScore: 0,
             totalOutfits: 0,
             following: [],
-            followers: []
+            followers: [],
+            isOnline: true,
+            lastActive: new Date().toISOString()
           };
           loadedProfile = defaultProfile;
           
           // Background setDoc
           setDoc(profileRef, defaultProfile).catch(e => console.warn("Failed background setDoc on auth change:", e));
+        } else {
+          // Update isOnline and lastActive for existing user profile in Firestore
+          updateDoc(profileRef, {
+            isOnline: true,
+            lastActive: new Date().toISOString()
+          }).catch(e => console.warn("Failed background updateDoc for online state on auth change:", e));
         }
 
         const sanitized = {
@@ -1305,7 +1320,9 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
           following: loadedProfile.following || [],
           followers: loadedProfile.followers || [],
           followersCount: loadedProfile.followersCount ?? 0,
-          followingCount: loadedProfile.followingCount ?? 0
+          followingCount: loadedProfile.followingCount ?? 0,
+          isOnline: true,
+          lastActive: new Date().toISOString()
         };
         setProfile(sanitized);
         localStorage.setItem('cloz_profile', JSON.stringify(sanitized));
@@ -1368,13 +1385,24 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
   useEffect(() => {
     if (!currentUser) return;
 
-    // 1. Listen to looks collection (ordered by date)
-    const looksQuery = query(collection(db, 'looks'), orderBy('date', 'desc'));
+    // 1. Listen to looks collection
+    const looksQuery = query(collection(db, 'looks'));
     const unsubscribeLooks = onSnapshot(looksQuery, (snapshot) => {
       const loadedLooks = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as Look[];
+
+      // Sort in memory by date descending, fallback to id descending
+      loadedLooks.sort((a, b) => {
+        const dateA = a.date || '';
+        const dateB = b.date || '';
+        if (dateA !== dateB) {
+          return dateB.localeCompare(dateA);
+        }
+        return b.id.localeCompare(a.id);
+      });
+
       // Filter out any looks from mock/simulated users
       const filteredLooks = loadedLooks.filter(look => 
         look && 
@@ -1641,6 +1669,14 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         ...newLook,
         comments: []
       }));
+
+      // Award +1 Aura for posting a photo (look)
+      const selfRef = doc(db, 'users', userId);
+      const updatedAura = Math.max(0, (profile.auraScore || 0) + 1);
+      await safeWrite(updateDoc(selfRef, {
+        auraScore: updatedAura
+      }));
+      setProfile(prev => prev ? { ...prev, auraScore: updatedAura } : null);
 
       setAnalysisStep('Adicionando peças ao seu armário digital...');
 
@@ -2133,8 +2169,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                                       className={`w-8.5 h-8.5 rounded-full object-cover border ${darkMode ? 'border-neutral-800' : 'border-gray-100'}`} 
                                       alt="avatar" 
                                     />
-                                    {isCurrentUser && (
-                                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white"></span>
+                                    {(isCurrentUser || user.isOnline || (user.lastActive && (Date.now() - new Date(user.lastActive).getTime() < 30 * 60 * 1000))) && (
+                                      <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white" title="Online"></span>
                                     )}
                                   </div>
                                   <div className="text-left min-w-0">
@@ -4068,13 +4104,22 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                   
                   {/* Hero / Header stats section */}
                   <div className="p-5 flex flex-col items-center text-center">
-                    <img 
-                      src={u.avatar} 
-                      className={`w-24 h-24 rounded-full object-cover border-4 shadow-md ${
-                        darkMode ? 'border-neutral-800' : 'border-white'
-                      }`} 
-                      alt="avatar" 
-                    />
+                    <div className="relative">
+                      <img 
+                        src={u.avatar} 
+                        className={`w-24 h-24 rounded-full object-cover border-4 shadow-md ${
+                          darkMode ? 'border-neutral-800' : 'border-white'
+                        }`} 
+                        alt="avatar" 
+                      />
+                      {(isCurrentUser || u.isOnline || (u.lastActive && (Date.now() - new Date(u.lastActive).getTime() < 30 * 60 * 1000))) && (
+                        <span className={`absolute bottom-0.5 right-0.5 w-5 h-5 rounded-full bg-emerald-500 border-4 flex items-center justify-center ${
+                          darkMode ? 'border-[#0A0A0A]' : 'border-[#FAF9F6]'
+                        }`} title="Online">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                        </span>
+                      )}
+                    </div>
                     
                     <h2 className={`text-lg font-bold tracking-tight mt-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                       {u.displayName || u.name}
