@@ -264,6 +264,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [activeTab, setActiveTab] = useState<'feed' | 'explore' | 'add' | 'notifications' | 'profile'>('feed');
   const [feedSubTab, setFeedSubTab] = useState<'recent' | 'community' | 'following'>('recent');
+  const [feedCountry, setFeedCountry] = useState<string>('Todos');
+  const [showFeedCountryDropdown, setShowFeedCountryDropdown] = useState<boolean>(false);
 
   // Real-time Weather Forecast state with precise default mock values mirroring the screenshot
   const [weatherForecast, setWeatherForecast] = useState<Record<number, { icon: string; tempMax: number; tempMin: number }>>({
@@ -340,6 +342,7 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
   // Detail views
   const [selectedLook, setSelectedLook] = useState<Look | null>(null);
   const [selectedItem, setSelectedItem] = useState<ClosetItem | null>(null);
+  const [selectedUserProfile, setSelectedUserProfile] = useState<UserProfile | null>(null);
   
   // Interactive 3D View states
   const [viewMode3D, setViewMode3D] = useState<boolean>(false);
@@ -1353,6 +1356,84 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
     };
   }, []);
 
+  // One-time check to seed Firestore database with high-quality fashion posts and profiles if empty
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const seedDatabaseIfNeeded = async () => {
+      try {
+        const looksSnap = await getDocs(collection(db, 'looks'));
+        if (looksSnap.empty) {
+          console.log("Firestore looks collection is empty. Seeding initial community content...");
+          const { SEED_PROFILE, SEED_OTHER_USERS, SEED_LOOKS, SEED_CLOSET } = await import('../data');
+          
+          // 1. Seed users profiles
+          const seedUsers = [SEED_PROFILE, ...SEED_OTHER_USERS];
+          for (const u of seedUsers) {
+            await setDoc(doc(db, 'users', u.uid), {
+              uid: u.uid,
+              username: u.username,
+              displayName: u.displayName,
+              avatar: u.avatar,
+              bio: u.bio || '',
+              location: u.location || '',
+              followersCount: u.followersCount ?? 0,
+              followingCount: u.followingCount ?? 0,
+              auraScore: u.auraScore ?? 0,
+              totalOutfits: u.totalOutfits ?? 0,
+              onboarded: true
+            }, { merge: true });
+          }
+
+          // 2. Seed looks
+          for (const l of SEED_LOOKS) {
+            await setDoc(doc(db, 'looks', l.id), {
+              id: l.id,
+              userId: l.userId,
+              username: l.username,
+              userAvatar: l.userAvatar,
+              image: l.image,
+              title: l.title,
+              description: l.description,
+              tags: l.tags || [],
+              likes: l.likes ?? 0,
+              likedBy: l.likedBy || [],
+              views: l.views ?? 0,
+              auraScore: l.auraScore ?? 0,
+              date: l.date,
+              commentsCount: l.commentsCount ?? 0,
+              location: l.location || '',
+              aesthetics: l.aesthetics || [],
+              comments: []
+            }, { merge: true });
+          }
+
+          // 3. Seed closet items
+          for (const c of SEED_CLOSET) {
+            await setDoc(doc(db, 'closet', c.id), {
+              id: c.id,
+              userId: c.userId,
+              name: c.name,
+              category: c.category,
+              brand: c.brand,
+              price: c.price,
+              image: c.image,
+              forSale: c.forSale ?? false,
+              boughtAt: c.boughtAt || new Date().toISOString().split('T')[0],
+              timesWorn: c.timesWorn ?? 1,
+              costPerWear: c.costPerWear ?? c.price
+            }, { merge: true });
+          }
+          console.log("Firestore successfully seeded with community users and looks!");
+        }
+      } catch (err) {
+        console.warn("Firestore seeding bypassed or failed:", err);
+      }
+    };
+
+    seedDatabaseIfNeeded();
+  }, [currentUser]);
+
   // Sync collections in real-time once user is logged in
   useEffect(() => {
     if (!currentUser) return;
@@ -2003,20 +2084,57 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                 ) : null}
 
                 {/* Filters Row */}
-                {feedSubTab !== 'community' && (
-                  <div className={`flex items-center justify-between px-3.5 py-1.5 text-[11px] font-bold animate-fadeIn ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
-                    <button className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition cursor-pointer ${darkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-750' : 'bg-neutral-100/60 hover:bg-neutral-100 border-transparent hover:border-gray-200'}`}>
-                      <span>🇧🇷</span>
-                      <span>Brazil</span>
-                      <span className="text-[8px] text-gray-400">↕</span>
-                    </button>
-                    <button className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition cursor-pointer ${darkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-750' : 'bg-neutral-100/60 hover:bg-neutral-100 border-transparent hover:border-gray-200'}`}>
-                      <SlidersHorizontal className="w-3.5 h-3.5 text-gray-400" />
-                      <span>Todos os Andares</span>
-                      <span className="text-[8px] text-gray-400">↕</span>
-                    </button>
-                  </div>
-                )}
+                {feedSubTab !== 'community' && (() => {
+                  const currentFeedCountryObj = COUNTRIES_LIST.find(c => c.name === feedCountry) || { name: 'Todos', emoji: '🌐' };
+                  return (
+                    <div className="relative flex items-center justify-between px-3.5 py-1.5 text-[11px] font-bold animate-fadeIn">
+                      <div className="relative z-20">
+                        <button 
+                          onClick={() => setShowFeedCountryDropdown(!showFeedCountryDropdown)}
+                          className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition cursor-pointer ${
+                            darkMode 
+                              ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-750 text-neutral-300' 
+                              : 'bg-neutral-100/60 hover:bg-neutral-100 border-transparent hover:border-gray-200 text-gray-700'
+                          }`}
+                        >
+                          <span>{currentFeedCountryObj.emoji}</span>
+                          <span>{currentFeedCountryObj.name}</span>
+                          <span className="text-[8px] text-gray-400">↕</span>
+                        </button>
+
+                        {showFeedCountryDropdown && (
+                          <div className={`absolute left-0 mt-1.5 w-36 rounded-2xl border shadow-lg z-50 p-1.5 py-1.5 animate-fadeIn ${
+                            darkMode ? 'bg-neutral-900 border-neutral-800 text-white' : 'bg-white border-gray-150 text-gray-800'
+                          }`}>
+                            {COUNTRIES_LIST.map(country => (
+                              <button
+                                key={country.name}
+                                onClick={() => {
+                                  setFeedCountry(country.name);
+                                  setShowFeedCountryDropdown(false);
+                                }}
+                                className={`w-full text-left px-2.5 py-1.5 rounded-xl text-[10px] flex items-center space-x-1.5 transition cursor-pointer ${
+                                  feedCountry === country.name
+                                    ? (darkMode ? 'bg-neutral-800 text-emerald-400 font-extrabold' : 'bg-neutral-50 text-emerald-600 font-extrabold')
+                                    : (darkMode ? 'hover:bg-neutral-850 text-neutral-300' : 'hover:bg-neutral-50 text-gray-600')
+                                }`}
+                              >
+                                <span>{country.emoji}</span>
+                                <span className="truncate">{country.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <button className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-full border transition cursor-pointer ${darkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-750 text-neutral-400' : 'bg-neutral-100/60 hover:bg-neutral-100 border-transparent hover:border-gray-200 text-gray-500'}`}>
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-gray-400" />
+                        <span>Todos os Andares</span>
+                        <span className="text-[8px] text-gray-400">↕</span>
+                      </button>
+                    </div>
+                  );
+                })()}
 
                 {/* Looks Feed List */}
                 <div className="space-y-4 px-3 pb-6">
@@ -2096,7 +2214,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                             return (
                               <div
                                 key={user.uid}
-                                className={`flex items-center justify-between p-2 rounded-2xl border transition-all ${
+                                onClick={() => setSelectedUserProfile(user)}
+                                className={`flex items-center justify-between p-2 rounded-2xl border transition-all cursor-pointer ${
                                   isCurrentUser 
                                     ? (darkMode ? 'bg-emerald-950/20 border-emerald-900/60 shadow-xs' : 'bg-emerald-50/40 border-emerald-100 shadow-xs') 
                                     : (darkMode ? 'bg-neutral-850/60 border-neutral-800/80 hover:border-neutral-700' : 'bg-white border-gray-100 hover:border-gray-200')
@@ -2145,7 +2264,12 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                       {(() => {
                         const filtered = looks.filter(look => {
                           if (feedSubTab === 'following') {
-                            return profile.following && profile.following.includes(look.userId);
+                            if (!profile || !profile.following || !profile.following.includes(look.userId)) {
+                              return false;
+                            }
+                          }
+                          if (feedCountry !== 'Todos') {
+                            return getCountryFromLocation(look.location) === feedCountry;
                           }
                           return true;
                         });
@@ -2154,8 +2278,8 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                           return (
                             <div className="col-span-2 py-16 text-center text-gray-400 text-xs font-mono">
                               {feedSubTab === 'following' 
-                                ? "Você ainda não segue ninguém com publicações." 
-                                : "Nenhum look encontrado."}
+                                ? "Você ainda não segue ninguém com publicações nessa região." 
+                                : "Nenhum look encontrado para essa região."}
                             </div>
                           );
                         }
@@ -3980,6 +4104,219 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
         </div>
       )}
 
+      {/* USER PROFILE DETAILS DRAWER */}
+      <AnimatePresence>
+        {selectedUserProfile && (() => {
+          const u = selectedUserProfile;
+          const userLooks = looks.filter(l => l.userId === u.uid);
+          const userCloset = closet.filter(item => item.userId === u.uid);
+          const isCurrentUser = profile && u.uid === profile.uid;
+          const isFollowing = profile && profile.following && profile.following.includes(u.uid);
+
+          return (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/65 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden"
+            >
+              <motion.div 
+                initial={{ y: "100%", opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: "100%", opacity: 0 }}
+                transition={{ type: "spring", damping: 25, stiffness: 220 }}
+                className={`w-full max-w-md h-[92vh] sm:h-[88vh] rounded-[32px] shadow-2xl flex flex-col overflow-hidden border relative ${
+                  darkMode ? 'bg-[#0A0A0A] border-neutral-800' : 'bg-[#FAF9F6] border-neutral-100'
+                }`}
+              >
+                {/* Header */}
+                <div className={`px-5 py-4 border-b flex items-center justify-between sticky top-0 z-20 ${
+                  darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-gray-100'
+                }`}>
+                  <button 
+                    onClick={() => setSelectedUserProfile(null)} 
+                    className={`p-1.5 -ml-1 rounded-full transition cursor-pointer ${
+                      darkMode ? 'hover:bg-neutral-800 text-white' : 'hover:bg-neutral-50 text-gray-800'
+                    }`}
+                  >
+                    <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
+                  </button>
+                  <span className={`text-sm font-bold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    @{u.username}
+                  </span>
+                  <div className="w-8"></div> {/* Spacer for symmetry */}
+                </div>
+
+                {/* Profile Scrollable Content */}
+                <div className="flex-1 overflow-y-auto pb-12">
+                  
+                  {/* Hero / Header stats section */}
+                  <div className="p-5 flex flex-col items-center text-center">
+                    <img 
+                      src={u.avatar} 
+                      className={`w-24 h-24 rounded-full object-cover border-4 shadow-md ${
+                        darkMode ? 'border-neutral-800' : 'border-white'
+                      }`} 
+                      alt="avatar" 
+                    />
+                    
+                    <h2 className={`text-lg font-bold tracking-tight mt-3 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                      {u.displayName || u.name}
+                    </h2>
+                    
+                    <div className="flex items-center space-x-1 mt-1 text-[11px] text-gray-400 font-mono">
+                      <MapPin className="w-3 h-3 text-gray-400" />
+                      <span>{u.location || 'Brasil'}</span>
+                    </div>
+
+                    <p className={`text-xs mt-3 max-w-xs font-light leading-relaxed ${darkMode ? 'text-neutral-400' : 'text-gray-500'}`}>
+                      {u.bio || 'Criando e combinando outfits autorais no Cloz.'}
+                    </p>
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-3 gap-6 my-5 w-full max-w-xs">
+                      <div>
+                        <span className={`text-sm font-bold block ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          {userLooks.length}
+                        </span>
+                        <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-mono">
+                          Looks
+                        </span>
+                      </div>
+                      <div>
+                        <span className={`text-sm font-bold block ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          {u.followersCount || 0}
+                        </span>
+                        <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-mono">
+                          Seguidores
+                        </span>
+                      </div>
+                      <div>
+                        <span className={`text-sm font-bold block ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                          {u.followingCount || 0}
+                        </span>
+                        <span className="text-[9px] uppercase tracking-wider text-gray-400 block font-mono">
+                          Seguindo
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Follow Action Button */}
+                    {!isCurrentUser && (
+                      <button
+                        onClick={() => handleFollowUser(u.uid)}
+                        className={`w-full max-w-xs py-2.5 rounded-2xl text-xs font-bold transition-all shadow-3xs cursor-pointer flex items-center justify-center space-x-2 ${
+                          isFollowing
+                            ? (darkMode ? 'bg-neutral-850 text-neutral-400 border border-neutral-700' : 'bg-neutral-100 text-gray-500 border border-gray-200 hover:bg-neutral-200/50')
+                            : 'bg-[#1E3F20] hover:bg-neutral-800 text-white shadow-md'
+                        }`}
+                      >
+                        {isFollowing ? (
+                          <>
+                            <span>✓</span>
+                            <span>Seguindo</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>+</span>
+                            <span>Seguir</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Looks and Closet grids */}
+                  <div className={`border-t ${darkMode ? 'border-neutral-800' : 'border-gray-100/60'}`}>
+                    
+                    {/* Visual Section Headers */}
+                    <div className="p-4">
+                      <h3 className={`text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 ${
+                        darkMode ? 'text-emerald-400' : 'text-emerald-700'
+                      }`}>
+                        <span>✨ LOOKS AUTORAIS ({userLooks.length})</span>
+                      </h3>
+                      
+                      {userLooks.length === 0 ? (
+                        <div className="py-8 text-center text-gray-400 text-xs font-mono">
+                          Esse curador ainda não publicou looks.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2 mt-2.5">
+                          {userLooks.map(look => (
+                            <div 
+                              key={look.id}
+                              onClick={() => {
+                                setSelectedLook(look);
+                                setSelectedUserProfile(null); // transition focus to the look
+                              }}
+                              className="aspect-[3/4] relative rounded-xl overflow-hidden cursor-pointer group border border-gray-100"
+                            >
+                              <img src={look.image} className="w-full h-full object-cover group-hover:scale-105 transition" alt="look" />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex items-end p-1.5 opacity-0 group-hover:opacity-100 transition">
+                                <span className="text-[8px] font-mono text-white flex items-center gap-0.5">
+                                  <Heart className="w-2 h-2 fill-white text-white" /> {look.likes}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-4 border-t border-neutral-800/10">
+                      <h3 className={`text-xs font-mono font-bold uppercase tracking-wider flex items-center space-x-1.5 ${
+                        darkMode ? 'text-amber-400' : 'text-amber-700'
+                      }`}>
+                        <span>🧥 PEÇAS DO ARMÁRIO ({userCloset.length})</span>
+                      </h3>
+                      
+                      {userCloset.length === 0 ? (
+                        <div className="py-8 text-center text-gray-400 text-xs font-mono">
+                          Esse curador ainda não catalogou peças no armário.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2 mt-2.5">
+                          {userCloset.map(item => (
+                            <div 
+                              key={item.id}
+                              onClick={() => {
+                                setSelectedItem(item);
+                                setSelectedUserProfile(null); // transition focus to closet item
+                              }}
+                              className={`aspect-[3/4] relative rounded-xl overflow-hidden cursor-pointer group border ${
+                                darkMode ? 'border-neutral-800 bg-neutral-900' : 'border-gray-100 bg-white'
+                              }`}
+                            >
+                              <img src={item.image} className="w-full h-full object-contain p-1 group-hover:scale-105 transition" alt={item.name} />
+                              <div className="absolute top-1 right-1">
+                                {item.forSale && (
+                                  <span className="bg-emerald-500 text-white text-[7px] font-mono font-bold px-1 py-0.5 rounded-md uppercase tracking-wider">
+                                    Venda
+                                  </span>
+                                )}
+                              </div>
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex items-end p-1.5 opacity-0 group-hover:opacity-100 transition">
+                                <span className="text-[7px] font-mono text-white truncate w-full">
+                                  {item.brand}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+
+                </div>
+
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
+
       {/* LOOK DETAILS DRAWER */}
       <AnimatePresence>
         {selectedLook && (
@@ -4047,16 +4384,40 @@ export default function AppSimulator({ onBackToWeb }: AppSimulatorProps) {
                     <ArrowLeft className="w-4.5 h-4.5 stroke-[2.5]" />
                   </button>
                   
-                  {/* User Avatar */}
-                  <div className="relative shrink-0">
-                    <img 
-                      src={selectedLook.userAvatar} 
-                      className={`w-8 h-8 rounded-full object-cover ${darkMode ? "border border-neutral-800" : "border border-gray-100"}`} 
-                      alt="avatar" 
-                    />
+                   {/* User Avatar & Name click to view Profile */}
+                  <div 
+                    onClick={() => {
+                      const posterUser = allUsers.find(u => u.uid === selectedLook.userId);
+                      if (posterUser) {
+                        setSelectedUserProfile(posterUser);
+                      } else {
+                        setSelectedUserProfile({
+                          uid: selectedLook.userId,
+                          username: selectedLook.username,
+                          displayName: selectedLook.username,
+                          avatar: selectedLook.userAvatar,
+                          bio: 'Curador de moda na Cloz.',
+                          location: selectedLook.location || 'Brasil',
+                          followersCount: 120,
+                          followingCount: 95,
+                          auraScore: selectedLook.auraScore || 70,
+                          totalOutfits: 3,
+                          onboarded: true
+                        });
+                      }
+                    }}
+                    className="flex items-center space-x-2 shrink-0 cursor-pointer group"
+                  >
+                    <div className="relative shrink-0">
+                      <img 
+                        src={selectedLook.userAvatar} 
+                        className={`w-8 h-8 rounded-full object-cover transition group-hover:scale-105 ${darkMode ? "border border-neutral-800" : "border border-gray-100"}`} 
+                        alt="avatar" 
+                      />
+                    </div>
+                    
+                    <span className={`text-xs font-bold truncate shrink-0 max-w-[120px] transition group-hover:underline ${darkMode ? 'text-white' : 'text-gray-900'}`}>@{selectedLook.username}</span>
                   </div>
-                  
-                  <span className={`text-xs font-bold truncate shrink-0 max-w-[120px] ${darkMode ? 'text-white' : 'text-gray-900'}`}>@{selectedLook.username}</span>
                   
                   {/* Follow Button: Solid Green or Light Grey next to username */}
                   {profile && selectedLook.userId !== profile.uid && (
