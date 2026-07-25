@@ -1,6 +1,6 @@
 {
-  "name": "Cloz",
-  "description": "Cloz - Third Space for Fashion. Registre seus looks, monte seu closet e explore o lookbook global.",
+  "name": "CLOZ",
+  "description": "CLOZ - Third Space for Fashion. Registre seus looks, monte seu closet e explore o lookbook global.",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
