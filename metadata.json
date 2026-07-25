@@ -1,6 +1,6 @@
 {
   "name": "Cloz",
-  "description": "Rede social e armário digital inteligente para compartilhamento, organização e catalogação automática com geração de peças 3D em estúdio.",
+  "description": "Cloz - Third Space for Fashion. Registre seus looks, monte seu closet e explore o lookbook global.",
   "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
