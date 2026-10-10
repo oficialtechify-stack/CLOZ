@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import rawConfig from '../../firebase-applet-config.json';
 
 // Support Vercel / GitHub Environment Variables with high priority
@@ -38,21 +38,5 @@ export const db = (firebaseConfig as any).firestoreDatabaseId
   ? getFirestore(app, (firebaseConfig as any).firestoreDatabaseId) 
   : getFirestore(app);
 
-// Validate Connection to Firestore on startup as required by security guidelines
-async function testConnection() {
-  if (isMocked) {
-    console.log("Firebase initialized in fallback sandbox mode (no Vercel environment variables or configuration detected).");
-    return;
-  }
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Please check your Firebase configuration: client appears to be offline.", error);
-    } else {
-      console.log("Firebase initialized successfully. Test document ping complete.");
-    }
-  }
-}
-
-testConnection();
+// A successful SDK initialization does not imply database permission or network access.
+// Feature queries handle permission-denied explicitly; never perform an unnecessary startup read.
