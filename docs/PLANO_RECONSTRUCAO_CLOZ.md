@@ -29,3 +29,24 @@
 - Não substituir `main` ou publicar nova versão sem solicitar/receber autorização específica.
 - Não importar dados de usuários do Base44 para ambiente de demonstração.
 - Não criar interfaces genéricas novas que distorçam a identidade do protótipo existente.
+
+
+## Direção de produto aprovada — rede universal, lançamento focado em devs
+- CLOZ será uma **rede social universal**; programação é a comunidade inicial, **não** um limite de cadastro ou publicação.
+- Preservar nome, identidade visual, tipografia e estética original do protótipo Gemini. Não trocar por aparência genérica de ferramenta para programadores.
+- Feed admite formatos `texto`, `imagem`, `vídeo`, `projeto` e tópicos opcionais; uma conta pode acompanhar múltiplos interesses (desenvolvimento, moda, música, games etc.).
+- Explorar por interesse e descobrir comunidades; não filtrar nem bloquear usuários de outros nichos.
+- Perfis universais com seções opcionais: portfólio de projetos e linguagens para devs; closet e looks para moda; ambas podem coexistir.
+- Fluxos sociais comuns: seguir, comentar, curtir, salvar, mensagens, stories e notificações.
+- Comunidades de tecnologia, moda e outras categorias usam a mesma arquitetura; evitar coleções Firebase separadas por nicho.
+- Destaque inicial para comunidade dev com cartões de projetos, repositórios GitHub e colaboração. GitHub OAuth/API é integração futura, não requisito para navegação.
+- IA desativada até escolher um provedor; falha de IA nunca impede uso das outras funções.
+- Na fase atual, desenvolver estrutura visual **sem importar usuários ou abrir regras do banco**; qualquer conteúdo de amostra deve ser rotulado demonstração.
+
+### Nova sequência visual
+1. Navegação e feed universais respeitando o design já existente.
+2. Perfil universal configurável e conteúdos em múltiplas categorias.
+3. Comunidades e vitrine de projetos dos desenvolvedores.
+4. Stories, mensagens, música e notificações.
+5. Módulos opcionais de moda/closet, preservando funcionalidades herdadas do Base44.
+6. Revisão de fidelidade visual e testes responsivos antes de conectar Firebase e migrar dados.
