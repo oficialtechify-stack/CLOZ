@@ -33,6 +33,10 @@ export default function CommunityHub() {
   const [repository, setRepository] = useState('');
   const [commentDrafts, setCommentDrafts] = useState<Record<string,string>>({});
   const [following, setFollowing] = useState<string[]>([]);
+  const [displayName, setDisplayName] = useState('Meu perfil');
+  const [bio, setBio] = useState('Compartilho projetos e tudo de que gosto.');
+  const [technologies, setTechnologies] = useState('React, JavaScript');
+  const [editing, setEditing] = useState(false);
   const [joined, setJoined] = useState<string[]>(['Programação']);
   const visible = useMemo(() => posts.filter(p => (topic === 'Todos' || p.topic === topic) &&
     (p.author + ' ' + p.body + ' ' + p.topic).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))), [posts, topic, search]);
@@ -85,6 +89,21 @@ export default function CommunityHub() {
       <aside className="hidden rounded-2xl bg-white p-5 md:block"><h2 className="font-semibold">Descubra interesses</h2><p className="my-3 text-xs text-neutral-500">Programação em destaque no lançamento, sem excluir outras comunidades.</p>{topics.slice(1).map(t=><button key={t} className="block w-full rounded-lg px-2 py-3 text-left text-sm hover:bg-neutral-100" onClick={()=>setTopic(t)}>{t}</button>)}</aside>
     </div>}
     {screen==='communities' && <div className="grid gap-3 sm:grid-cols-2">{topics.slice(1).map(t=><div key={t} className="rounded-2xl bg-white p-5"><h2 className="text-lg font-semibold">{t}</h2><p className="my-3 text-sm text-neutral-500">{t==='Programação'?'Projetos, carreira, colaboração e código.':'Um espaço para compartilhar interesses e conhecer pessoas.'}</p><button onClick={()=>setJoined(a=>a.includes(t)?a.filter(x=>x!==t):[...a,t])} className="rounded-full bg-black px-4 py-2 text-xs text-white">{joined.includes(t)?'Sair da comunidade':'Participar'}</button></div>)}</div>}
-    {screen==='profile' && <div className="max-w-2xl rounded-2xl bg-white p-6"><div className="mb-5 h-24 rounded-xl bg-[#d3cdc3]"/><div className="-mt-12 mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-neutral-800 text-2xl text-white">C</div><h2 className="text-xl font-semibold">@meu.perfil</h2><p className="text-sm text-neutral-500">Compartilho projetos e tudo de que gosto.</p><p className="mt-4 text-sm">{posts.filter(p=>p.author==='meu.perfil').length} publicações · {joined.length} comunidades</p><h3 className="mt-6 font-semibold">Meus projetos e publicações</h3><div className="mt-2 space-y-2">{posts.filter(p=>p.author==='meu.perfil').map(p=><p className="rounded-lg bg-neutral-100 p-3 text-sm" key={p.id}>{p.body}</p>)}</div></div>}
+    {screen==='profile' && <div className="max-w-2xl rounded-2xl bg-white p-6">
+      <div className="mb-5 h-24 rounded-xl bg-[#d3cdc3]"/>
+      <div className="-mt-12 mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-white bg-neutral-800 text-2xl text-white">C</div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">{displayName}</h2><p className="text-sm text-neutral-500">@meu.perfil</p></div><button onClick={()=>setEditing(v=>!v)} className="rounded-full border px-4 py-2 text-sm">{editing?'Fechar edição':'Editar perfil'}</button></div>
+      {editing && <div className="my-5 space-y-3 rounded-xl bg-[#F7F6F3] p-4">
+        <label className="block text-xs">Nome<input value={displayName} onChange={e=>setDisplayName(e.target.value)} maxLength={80} className="mt-1 w-full rounded-lg border p-3 text-sm"/></label>
+        <label className="block text-xs">Biografia<textarea value={bio} onChange={e=>setBio(e.target.value)} maxLength={500} rows={3} className="mt-1 w-full rounded-lg border p-3 text-sm"/></label>
+        <label className="block text-xs">Tecnologias (opcional)<input value={technologies} onChange={e=>setTechnologies(e.target.value)} maxLength={150} className="mt-1 w-full rounded-lg border p-3 text-sm"/></label>
+        <button onClick={()=>setEditing(false)} className="rounded-full bg-black px-4 py-2 text-sm text-white">Concluir edição local</button>
+      </div>}
+      <p className="mt-3 whitespace-pre-wrap text-sm text-neutral-600">{bio}</p>
+      {technologies.trim() && <div className="mt-4 flex flex-wrap gap-2">{technologies.split(',').map(x=>x.trim()).filter(Boolean).map((name,i)=><span key={i} className="rounded-full bg-[#EAE8E1] px-3 py-1 text-xs">{name}</span>)}</div>}
+      <p className="mt-4 text-sm">{posts.filter(p=>p.author==='meu.perfil').length} publicações · {joined.length} comunidades</p>
+      <h3 className="mt-6 font-semibold">Meus projetos e publicações</h3>
+      <div className="mt-2 space-y-2">{posts.filter(p=>p.author==='meu.perfil').length===0 && <p className="rounded-lg bg-neutral-100 p-3 text-sm text-neutral-500">Publique algo no feed para aparecer aqui.</p>}{posts.filter(p=>p.author==='meu.perfil').map(p=><div className="rounded-lg bg-neutral-100 p-3 text-sm" key={p.id}><span className="text-xs text-neutral-500">{p.topic} · {p.kind}</span><p className="mt-1 whitespace-pre-wrap">{p.body}</p>{p.repository && <a href={p.repository} rel="noopener noreferrer" target="_blank" className="mt-2 block underline">Abrir projeto</a>}</div>)}</div>
+    </div>}
   </section>;
 }
