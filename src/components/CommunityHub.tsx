@@ -39,6 +39,7 @@ export default function CommunityHub() {
   const [bio, setBio] = useState('Compartilho projetos e tudo de que gosto.');
   const [technologies, setTechnologies] = useState('React, JavaScript');
   const [editing, setEditing] = useState(false);
+  const [profileSection, setProfileSection] = useState<'posts'|'reposts'|'saved'>('posts');
   const [joined, setJoined] = useState<string[]>(['Programação']);
   const visible = useMemo(() => posts.filter(p => (topic === 'Todos' || p.topic === topic) &&
     (p.author + ' ' + p.body + ' ' + p.topic).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))), [posts, topic, search]);
@@ -109,9 +110,19 @@ export default function CommunityHub() {
       </div>}
       <p className="mt-3 whitespace-pre-wrap text-sm text-neutral-600">{selectedProfile==='meu.perfil'?bio:'Perfil demonstrativo da comunidade CLOZ.'}</p>
       {selectedProfile==='meu.perfil' && technologies.trim() && <div className="mt-4 flex flex-wrap gap-2">{technologies.split(',').map(x=>x.trim()).filter(Boolean).map((name,i)=><span key={i} className="rounded-full bg-[#EAE8E1] px-3 py-1 text-xs">{name}</span>)}</div>}
-      <p className="mt-4 text-sm">{posts.filter(p=>p.author===selectedProfile).length} publicações · {joined.length} comunidades</p>
-      <h3 className="mt-6 font-semibold">Meus projetos e publicações</h3>
-      <div className="mt-2 space-y-2">{posts.filter(p=>p.author==='meu.perfil').length===0 && <p className="rounded-lg bg-neutral-100 p-3 text-sm text-neutral-500">Publique algo no feed para aparecer aqui.</p>}{posts.filter(p=>p.author==='meu.perfil').map(p=><div className="rounded-lg bg-neutral-100 p-3 text-sm" key={p.id}><span className="text-xs text-neutral-500">{p.topic} · {p.kind}</span><p className="mt-1 whitespace-pre-wrap">{p.body}</p>{p.repository && <a href={p.repository} rel="noopener noreferrer" target="_blank" className="mt-2 block underline">Abrir projeto</a>}</div>)}</div>
+      <p className="mt-4 text-sm">{posts.filter(p=>p.author===selectedProfile).length} publicações · {selectedProfile==='meu.perfil'?joined.length:0} comunidades (demo)</p>
+      <div className="mt-6 flex gap-2 border-b border-neutral-200 pb-3">
+        {(['posts','reposts','saved'] as const).filter(section=>section!=='saved'||selectedProfile==='meu.perfil').map(section=><button key={section} onClick={()=>setProfileSection(section)} className={`rounded-full px-4 py-2 text-sm ${profileSection===section?'bg-black text-white':'bg-neutral-100'}`}>{section==='posts'?'Publicações':section==='reposts'?'Reposts':'Salvos (privado)'}</button>)}
+      </div>
+      <div className="mt-3 space-y-3">
+        {posts.filter(p=>profileSection==='saved'?selectedProfile==='meu.perfil'&&p.saved:profileSection==='reposts'?p.author===selectedProfile&&!!p.repostOf:p.author===selectedProfile&&!p.repostOf).length===0 && <p className="rounded-lg bg-neutral-100 p-4 text-sm text-neutral-500">Nenhum conteúdo nesta seção da demonstração.</p>}
+        {posts.filter(p=>profileSection==='saved'?selectedProfile==='meu.perfil'&&p.saved:profileSection==='reposts'?p.author===selectedProfile&&!!p.repostOf:p.author===selectedProfile&&!p.repostOf).map(p=><article className="rounded-xl bg-neutral-100 p-4 text-sm" key={p.id}>
+          <span className="text-xs text-neutral-500">{p.topic} · {p.kind}{p.repostOf?` · repost de @${p.repostOf}`:''}</span>
+          <p className="mt-2 whitespace-pre-wrap break-words">{p.body}</p>
+          {p.music && <p className="mt-2 flex items-center gap-2 text-xs"><Music2 size={14}/>{p.music}</p>}
+          {p.repository && <a href={p.repository} rel="noopener noreferrer" target="_blank" className="mt-2 block underline">Abrir projeto</a>}
+        </article>)}
+      </div>
     </div>}
   </section>;
 }
