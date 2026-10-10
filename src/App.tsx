@@ -4,13 +4,14 @@ import LandingPage from './components/LandingPage';
 import CommunityHub from './components/CommunityHub';
 import SocialFeatures from './components/SocialFeatures';
 
-type Feature = 'stories' | 'closet' | 'messages' | 'music' | 'notifications' | 'ai';
+type Feature = 'stories' | 'closet' | 'messages' | 'music' | 'sync' | 'notifications' | 'ai';
 const navigation: {id: 'community' | Feature; label: string; icon: React.ElementType}[] = [
   {id:'community',label:'Feed, comunidades e perfil',icon:Compass},
   {id:'stories',label:'Stories',icon:Camera},
   {id:'closet',label:'Coleções e closet',icon:Shirt},
   {id:'messages',label:'Mensagens',icon:MessageCircle},
   {id:'music',label:'Música',icon:Music2},
+  {id:'sync',label:'Ouvir juntos',icon:Users},
   {id:'notifications',label:'Notificações',icon:Bell},
   {id:'ai',label:'IA',icon:Sparkles}
 ];
