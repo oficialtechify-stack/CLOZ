@@ -1,16 +1,18 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import LandingPage from './components/LandingPage';
+import SocialApp from './components/SocialApp';
 
 export default function App() {
-  return (
-    <div className="min-h-screen bg-[#FFFFFF] text-[#171717] selection:bg-[#EAE8E1]">
+  const [isSocial, setIsSocial] = useState(window.location.hash.startsWith('#/app'));
+  useEffect(() => {
+    const onHashChange = () => setIsSocial(window.location.hash.startsWith('#/app'));
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+  return <div className="min-h-screen bg-white text-[#171717] selection:bg-[#EAE8E1]">
+    {isSocial ? <SocialApp /> : <>
       <LandingPage />
-    </div>
-  );
+      <a href="#/app" className="fixed bottom-5 right-5 z-40 rounded-full bg-black px-5 py-3 text-sm font-semibold text-white shadow-xl hover:bg-neutral-800">Explorar CLOZ →</a>
+    </>}
+  </div>;
 }
-
