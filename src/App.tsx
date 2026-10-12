@@ -3,8 +3,9 @@ import { Bell, Camera, Compass, MessageCircle, Music2, Shirt, Sparkles, Users } 
 import LandingPage from './components/LandingPage';
 import CommunityHub from './components/CommunityHub';
 import SocialFeatures from './components/SocialFeatures';
+import { ClozEffects } from './components/ClozEffects';
 
-type Feature = 'stories' | 'closet' | 'messages' | 'music' | 'sync' | 'notifications' | 'ai';
+type Feature = 'stories' | 'closet' | 'messages' | 'music' | 'sync' | 'notifications' | 'ai' | 'effects';
 const navigation: {id: 'community' | Feature; label: string; icon: React.ElementType}[] = [
   {id:'community',label:'Feed, comunidades e perfil',icon:Compass},
   {id:'stories',label:'Stories',icon:Camera},
@@ -13,7 +14,8 @@ const navigation: {id: 'community' | Feature; label: string; icon: React.Element
   {id:'music',label:'Música',icon:Music2},
   {id:'sync',label:'Ouvir juntos',icon:Users},
   {id:'notifications',label:'Notificações',icon:Bell},
-  {id:'ai',label:'IA',icon:Sparkles}
+  {id:'ai',label:'IA',icon:Sparkles},
+  {id:'effects',label:'CLOZ Effects',icon:Sparkles}
 ];
 function currentRoute() {
   const match = window.location.hash.match(/^#\/comunidade(?:\/([a-z]+))?$/);
@@ -37,7 +39,7 @@ export default function App() {
           {navigation.map(({id,label,icon:Icon})=><a key={id} href={id==='community'?'#/comunidade':`#/comunidade/${id}`} aria-current={route===id?'page':undefined} className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs sm:text-sm ${route===id?'bg-[#171717] text-white':'bg-[#F2F0ED] hover:bg-[#EAE8E1]'}`}><Icon size={16}/>{label}</a>)}
         </nav>
       </div>
-      {route==='community'?<CommunityHub/>:<SocialFeatures tab={route}/>}
+      {route==='community'?<CommunityHub/>:route==='effects'?<main className="mx-auto max-w-3xl px-4 py-8"><ClozEffects /></main>:<SocialFeatures tab={route}/>}
       <footer className="border-t border-[#EAE8E1] px-5 py-6 text-center text-xs text-neutral-500">CLOZ · Interface demonstrativa · Dados não salvos</footer>
     </> : <>
       <LandingPage />
