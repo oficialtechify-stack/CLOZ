@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { Megaphone, Wallet, StickyNote, Radio, Video, ShoppingBag, Crown, Music2 } from 'lucide-react';
 
 function readLocal<T>(key:string,fallback:T):T {
  try {const raw=window.localStorage.getItem(key);const value=raw?JSON.parse(raw):fallback;return Array.isArray(value)?value as T:fallback;} catch {return fallback;}
 }
-import { Megaphone, Wallet, StickyNote, Radio, Video, ShoppingBag, Crown, Music2 } from 'lucide-react';
-
 type Module = 'Carteira' | 'Notas' | 'Meus anúncios' | 'Lives' | 'Vídeos' | 'Marketplace' | 'Premium' | 'Música';
 const icons = { Carteira: Wallet, Notas: StickyNote, 'Meus anúncios': Megaphone, Lives: Radio, Vídeos: Video, Marketplace: ShoppingBag, Premium: Crown, Música: Music2 };
 const descriptions: Record<Module,string> = {
@@ -46,6 +45,8 @@ export default function ClozNotrModules({module}:{module:Module}) {
   {module==='Lives' && <div className="space-y-4"><div className="flex min-h-52 flex-col items-center justify-center rounded-2xl border border-[#333] bg-gradient-to-br from-[#2d1825] to-[#111] p-6 text-center"><Radio size={38}/><h3 className="mt-4 text-xl font-semibold">Ao vivo no CLOZ</h3><p className="mt-2 text-sm text-[#aaa]">Ainda não há transmissões disponíveis.</p></div><div className="grid grid-cols-2 gap-3">{['Explorar lives','Seguindo'].map(item=><div key={item} className="rounded-2xl bg-[#1c1c1c] p-5 text-sm">{item}<p className="mt-2 text-xs text-[#999]">Em breve</p></div>)}</div></div>}
   {module==='Música' && <div className="space-y-4"><div className="rounded-2xl border border-[#333] bg-gradient-to-r from-[#292039] to-[#121212] p-6"><Music2 size={32}/><h3 className="mt-4 text-xl font-semibold">Sua biblioteca</h3><p className="mt-2 text-sm text-[#aaa]">Playlists e faixas favoritas em um só lugar.</p></div><div className="grid gap-3 sm:grid-cols-2">{['Playlists','Favoritas','Descobrir músicas','Artistas'].map(item=><div key={item} className="rounded-xl border border-[#303030] bg-[#181818] p-5"><Music2 size={19}/><h4 className="mt-3 font-semibold">{item}</h4><p className="mt-2 text-xs text-[#999]">Catálogo ainda não conectado.</p></div>)}</div></div>}
   {module==='Carteira' && <div className="rounded-2xl bg-[#191919] p-5"><p className="text-xs text-[#aaa]">Saldo disponível</p><p className="mt-2 text-3xl font-semibold">R$ 0,00</p><p className="mt-3 text-xs text-[#aaa]">Valor ilustrativo, não conectado a uma conta financeira.</p></div>}
+  {module==='Carteira' && <div className="grid gap-3 sm:grid-cols-3">{['Entradas','Saídas','Extrato'].map(label=><article key={label} className="rounded-2xl border border-[#303030] bg-[#191919] p-5"><p className="text-sm text-[#aaa]">{label}</p><p className="mt-3 text-lg font-semibold">{label==='Extrato'?'Sem registros':'R$ 0,00'}</p><p className="mt-2 text-xs text-[#888]">Nenhuma operação financeira disponível.</p></article>)}</div>}
+  {module==='Marketplace' && <div className="grid gap-3 sm:grid-cols-3">{['Explorar','Categorias','Favoritos'].map(label=><article key={label} className="rounded-2xl border border-[#333] bg-[#191919] p-5"><ShoppingBag size={22}/><h3 className="mt-4 font-semibold">{label}</h3><p className="mt-2 text-xs text-[#999]">Vitrine pública ainda não conectada.</p></article>)}</div>}
   {module==='Meus anúncios' && <div className="rounded-2xl bg-[#191919] p-5"><h3 className="font-semibold">Campanhas</h3><p className="mt-2 text-sm text-[#aaa]">Nenhuma campanha. O CLOZ Ads será implementado futuramente.</p></div>}
   {module==='Premium' && <div className="rounded-2xl bg-[#191919] p-5"><h3 className="font-semibold">Benefícios planejados</h3><p className="mt-2 text-sm text-[#aaa]">Personalização avançada, recursos exclusivos e menos anúncios. Valores e condições ainda não definidos.</p></div>}
  </section>;
