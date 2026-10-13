@@ -1,4 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+
+function readLocal<T>(key:string,fallback:T):T {
+ try {const raw=window.localStorage.getItem(key);const value=raw?JSON.parse(raw):fallback;return Array.isArray(value)?value as T:fallback;} catch {return fallback;}
+}
 import { Megaphone, Wallet, StickyNote, Radio, Video, ShoppingBag, Crown, Music2 } from 'lucide-react';
 
 type Module = 'Carteira' | 'Notas' | 'Meus anúncios' | 'Lives' | 'Vídeos' | 'Marketplace' | 'Premium' | 'Música';
@@ -14,13 +18,15 @@ const descriptions: Record<Module,string> = {
   Música:'Seu espaço de músicas e playlists. Reprodução e licenças ainda serão integradas.'
 };
 export default function ClozNotrModules({module}:{module:Module}) {
- const [notes,setNotes]=useState<string[]>([]);
+ const [notes,setNotes]=useState<string[]>(()=>readLocal('cloz-notes-v1',[]));
  const [draft,setDraft]=useState('');
  const [editing,setEditing]=useState<number|null>(null);
  const [filter,setFilter]=useState('');
- const [marketItems,setMarketItems]=useState<{title:string;price:string}[]>([]);
+ const [marketItems,setMarketItems]=useState<{title:string;price:string}[]>(()=>readLocal('cloz-market-drafts-v1',[]));
  const [itemTitle,setItemTitle]=useState('');
  const [itemPrice,setItemPrice]=useState('');
+ useEffect(()=>{try{window.localStorage.setItem('cloz-notes-v1',JSON.stringify(notes));}catch{/* Storage unavailable */}},[notes]);
+ useEffect(()=>{try{window.localStorage.setItem('cloz-market-drafts-v1',JSON.stringify(marketItems));}catch{/* Storage unavailable */}},[marketItems]);
  const Icon=icons[module];
  return <section className="space-y-5" aria-label={module}>
   <div className="rounded-3xl border border-[#303030] bg-[#181818] p-6">
@@ -33,9 +39,9 @@ export default function ClozNotrModules({module}:{module:Module}) {
     <button disabled={!draft.trim()} className="rounded-full bg-white px-5 py-2 text-sm text-black disabled:opacity-50">{editing===null?'Adicionar nota':'Salvar alteração'}</button>
    </form>
    <input aria-label="Filtrar notas" value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Buscar notas" className="mt-5 w-full rounded-xl border border-[#444] bg-[#242424] p-3 text-white"/><div className="mt-5 space-y-3">{notes.map((note,i)=>note.toLocaleLowerCase('pt-BR').includes(filter.toLocaleLowerCase('pt-BR'))?<article key={i} className="flex items-start justify-between gap-3 rounded-xl bg-[#292929] p-4"><p className="whitespace-pre-wrap break-words text-sm">{note}</p><button onClick={()=>{setEditing(i);setDraft(note);}} className="text-xs text-[#bbb]">Editar</button><button onClick={()=>{setNotes(old=>old.filter((_,index)=>index!==i));if(editing===i){setEditing(null);setDraft('');}}} className="text-xs text-[#bbb]">Excluir</button></article>:null)}</div>
-   <p className="mt-4 text-xs text-[#999]">Notas temporárias desta sessão. Ainda não são salvas no servidor.</p>
+   <p className="mt-4 text-xs text-[#999]">Notas salvas neste navegador. Não são sincronizadas entre dispositivos nem enviadas ao servidor.</p>
   </div>}
-  {module==='Marketplace' && <section className="space-y-4 rounded-2xl bg-[#191919] p-5"><h3 className="text-lg font-semibold">Meus itens</h3><p className="text-xs text-[#aaa]">Cadastro local para montar sua vitrine. Nenhum item é vendido ou enviado ao servidor.</p><form onSubmit={e=>{e.preventDefault();if(!itemTitle.trim()||!itemPrice.trim())return;setMarketItems(old=>[{title:itemTitle.trim(),price:itemPrice.trim()},...old]);setItemTitle('');setItemPrice('');}} className="grid gap-3 sm:grid-cols-[1fr_130px_auto]"><input required maxLength={100} value={itemTitle} onChange={e=>setItemTitle(e.target.value)} placeholder="Nome do item" className="min-w-0 rounded-xl border border-[#444] bg-[#252525] p-3 text-white"/><input required maxLength={20} value={itemPrice} onChange={e=>setItemPrice(e.target.value)} placeholder="Preço em R$" className="min-w-0 rounded-xl border border-[#444] bg-[#252525] p-3 text-white"/><button className="rounded-xl bg-white px-4 py-3 text-black">Adicionar</button></form><div className="grid gap-3 sm:grid-cols-2">{marketItems.map((item,i)=><article key={i} className="rounded-xl bg-[#292929] p-4"><h4 className="font-semibold">{item.title}</h4><p className="mt-2 text-sm text-[#bbb]">R$ {item.price}</p><button onClick={()=>setMarketItems(old=>old.filter((_,j)=>i!==j))} className="mt-4 text-xs text-[#aaa]">Remover item</button></article>)}</div></section>}
+  {module==='Marketplace' && <section className="space-y-4 rounded-2xl bg-[#191919] p-5"><h3 className="text-lg font-semibold">Meus itens</h3><p className="text-xs text-[#aaa]">Rascunhos salvos neste navegador. Nenhum item é publicado, vendido ou enviado ao servidor.</p><form onSubmit={e=>{e.preventDefault();if(!itemTitle.trim()||!itemPrice.trim()||!Number.isFinite(Number(itemPrice.replace(',','.')))||Number(itemPrice.replace(',','.'))<=0)return;setMarketItems(old=>[{title:itemTitle.trim(),price:itemPrice.trim()},...old]);setItemTitle('');setItemPrice('');}} className="grid gap-3 sm:grid-cols-[1fr_130px_auto]"><input required maxLength={100} value={itemTitle} onChange={e=>setItemTitle(e.target.value)} placeholder="Nome do item" className="min-w-0 rounded-xl border border-[#444] bg-[#252525] p-3 text-white"/><input required maxLength={20} value={itemPrice} onChange={e=>setItemPrice(e.target.value)} placeholder="Preço em R$" inputMode="decimal" className="min-w-0 rounded-xl border border-[#444] bg-[#252525] p-3 text-white"/><button className="rounded-xl bg-white px-4 py-3 text-black">Adicionar</button></form><div className="grid gap-3 sm:grid-cols-2">{marketItems.map((item,i)=><article key={i} className="rounded-xl bg-[#292929] p-4"><h4 className="font-semibold">{item.title}</h4><p className="mt-2 text-sm text-[#bbb]">R$ {item.price}</p><button onClick={()=>setMarketItems(old=>old.filter((_,j)=>i!==j))} className="mt-4 text-xs text-[#aaa]">Remover item</button></article>)}</div></section>}
   {module==='Carteira' && <div className="rounded-2xl bg-[#191919] p-5"><p className="text-xs text-[#aaa]">Saldo disponível</p><p className="mt-2 text-3xl font-semibold">R$ 0,00</p><p className="mt-3 text-xs text-[#aaa]">Valor ilustrativo, não conectado a uma conta financeira.</p></div>}
   {module==='Meus anúncios' && <div className="rounded-2xl bg-[#191919] p-5"><h3 className="font-semibold">Campanhas</h3><p className="mt-2 text-sm text-[#aaa]">Nenhuma campanha. O CLOZ Ads será implementado futuramente.</p></div>}
   {module==='Premium' && <div className="rounded-2xl bg-[#191919] p-5"><h3 className="font-semibold">Benefícios planejados</h3><p className="mt-2 text-sm text-[#aaa]">Personalização avançada, recursos exclusivos e menos anúncios. Valores e condições ainda não definidos.</p></div>}
