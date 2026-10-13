@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function postExists(postId) { return exists(/databases/$(database)/documents/cloz_posts/$(postId)); }
+    match /cloz_posts/{postId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid','author','text','createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.author is string
+        && request.resource.data.author.size() <= 100
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && request.resource.data.createdAt == request.time;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      match /likes/{userId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && postExists(postId) && userId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid','createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.createdAt == request.time;
+        allow delete: if signedIn() && userId == request.auth.uid;
+        allow update: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn() && postExists(postId)
+          && request.resource.data.keys().hasOnly(['uid','author','text','createdAt'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.author is string
+          && request.resource.data.author.size() <= 100
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500
+          && request.resource.data.createdAt == request.time;
+        allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+        allow update: if false;
+      }
+    }
+  }
+}
