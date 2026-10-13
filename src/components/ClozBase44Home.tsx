@@ -1,0 +1,26 @@
+import React, { useState } from 'react';
+import { Compass, Search, Plus, Users, UserRound, Music2, Heart, MessageCircle } from 'lucide-react';
+
+/** Base44-inspired CLOZ homepage. Visual-only, no external writes or deployment. */
+export default function ClozBase44Home() {
+  const [tab,setTab]=useState<'Recente'|'Seguindo'|'Se descobrindo'>('Recente');
+  const [section,setSection]=useState('Início');
+  const [liked,setLiked]=useState<string[]>([]);
+  const stories=['Seu story','dev.lia','rafa.street','pixel.ana','cloz'];
+  const posts=[
+    {id:'1',author:'dev.lia',category:'Programação',text:'Construindo ideias, compartilhando projetos e encontrando minha comunidade.',gradient:'from-[#3c3c50] to-[#11111b]'},
+    {id:'2',author:'rafa.street',category:'Moda',text:'Criatividade em cada detalhe. Qual é a sua inspiração hoje?',gradient:'from-[#443b37] to-[#17120f]'},
+    {id:'3',author:'pixel.ana',category:'Games',text:'Um universo inteiro pode começar com um pixel.',gradient:'from-[#293b45] to-[#0e1419]'},
+    {id:'4',author:'cloz',category:'Comunidade',text:'Seu espaço para criar, descobrir e se conectar.',gradient:'from-[#463448] to-[#140f16]'}
+  ];
+  return <main className="min-h-screen bg-black px-4 pb-32 pt-6 text-white" style={{colorScheme:'dark'}}>
+    <div className="mx-auto max-w-[860px]">
+      <header className="mb-8 flex items-center justify-between"><h1 className="text-3xl font-black tracking-[-0.08em]">CLOZ</h1><button aria-label="Buscar" className="rounded-full bg-[#202020] p-3"><Search size={20}/></button></header>
+      <nav aria-label="Categorias do feed" className="mb-6 flex gap-7 overflow-x-auto border-b border-[#262626]">{(['Recente','Seguindo','Se descobrindo'] as const).map(t=><button key={t} onClick={()=>setTab(t)} className={`whitespace-nowrap pb-4 text-sm ${tab===t?'border-b-2 border-white font-semibold':'text-[#999]'}`}>{t}</button>)}</nav>
+      <div aria-label="Stories" className="mb-8 flex gap-4 overflow-x-auto pb-2">{stories.map((name,i)=><button key={name} className="flex min-w-[70px] flex-col items-center gap-2 text-xs"><span className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-[#eaeaea] bg-[#242424] text-xl font-semibold">{i===0?<Plus/>:name[0].toUpperCase()}</span><span className="max-w-[72px] truncate">{name}</span></button>)}</div>
+      {section==='Início'?<div className="grid grid-cols-2 gap-3 sm:gap-4">{(tab==='Seguindo'?[]:posts).map(post=><article key={post.id} className="overflow-hidden rounded-2xl bg-[#171717]"><div className={`flex aspect-[4/5] items-center justify-center bg-gradient-to-br p-5 ${post.gradient}`}><span className="text-center text-xl font-semibold tracking-tight sm:text-3xl">{post.category}</span></div><div className="p-3"><p className="mb-2 text-xs font-semibold">@{post.author}</p><p className="line-clamp-2 text-xs text-[#c5c5c5]">{post.text}</p><div className="mt-3 flex gap-3"><button aria-label="Curtir" onClick={()=>setLiked(v=>v.includes(post.id)?v.filter(x=>x!==post.id):[...v,post.id])}><Heart size={17} fill={liked.includes(post.id)?'white':'none'}/></button><button aria-label="Comentários"><MessageCircle size={17}/></button></div></div></article>)}{tab==='Seguindo'&&<p className="col-span-2 py-16 text-center text-[#aaa]">As publicações de quem você segue aparecerão aqui.</p>}</div>:<div className="rounded-2xl bg-[#171717] p-8 text-center text-[#aaa]">{section} — integração em desenvolvimento.</div>}
+    </div>
+    <nav aria-label="Navegação principal" className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-5 rounded-full border border-[#888] bg-[#dedede] px-5 py-3 text-black shadow-2xl sm:gap-8"><button aria-label="Início" onClick={()=>setSection('Início')}><Compass/></button><button aria-label="Comunidades" onClick={()=>setSection('Comunidades')}><Users/></button><button aria-label="Criar publicação" onClick={()=>setSection('Criar publicação')} className="rounded-full bg-black p-3 text-white"><Plus/></button><button aria-label="Buscar" onClick={()=>setSection('Buscar')}><Search/></button><button aria-label="Perfil" onClick={()=>setSection('Perfil')}><UserRound/></button></nav>
+    <button aria-label="Música" title="Recurso em desenvolvimento" className="fixed bottom-28 right-4 rounded-full border border-[#444] bg-[#222] p-3"><Music2/></button>
+  </main>;
+}
