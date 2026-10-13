@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Bell, Camera, Compass, MessageCircle, Music2, Shirt, Sparkles, Users } from 'lucide-react';
 import LandingPage from './components/LandingPage';
 import CommunityHub from './components/CommunityHub';
+import ClozBase44Home from './components/ClozBase44Home';
 import SocialFeatures from './components/SocialFeatures';
 import { ClozEffects } from './components/ClozEffects';
 
@@ -28,8 +29,8 @@ export default function App() {
     window.addEventListener('hashchange',handle);
     return ()=>window.removeEventListener('hashchange',handle);
   },[]);
-  return <div className="min-h-screen bg-[#FFFFFF] text-[#171717] selection:bg-[#EAE8E1]">
-    {route ? <>
+  return <div className={`min-h-screen ${route==='community'?'bg-black text-white':'bg-[#FFFFFF] text-[#171717] selection:bg-[#EAE8E1]'}`}>
+    {route === 'community' ? <ClozBase44Home /> : route ? <>
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[#EAE8E1] bg-white/95 px-5 py-4 backdrop-blur">
         <a href="#/" className="text-2xl font-bold tracking-[-.08em]" aria-label="CLOZ — página inicial">CLOZ.</a>
         <span className="rounded-full bg-[#EAE8E1] px-3 py-1 text-xs">Protótipo offline</span>
