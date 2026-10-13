@@ -1,6 +1,6 @@
 import { auth, db, isMocked } from './firebase';
 import {
-  addDoc, collection, deleteDoc, doc, getDocs, limit, orderBy, query,
+  addDoc, collection, doc, getDocs, limit, orderBy, query,
   runTransaction, serverTimestamp, startAfter, updateDoc, where,
   type DocumentData, type QueryDocumentSnapshot,
 } from 'firebase/firestore';
@@ -113,11 +113,3 @@ export async function updateMyProfile(displayName: string, bio: string) {
   return updateDoc(doc(db, 'users', uid), { displayName: name, bio: text(bio, 500), updatedAt: serverTimestamp() });
 }
 
-export async function deleteMyPost(postId: string) {
-  const uid = currentUserId();
-  const postRef = doc(db, 'posts', postId);
-  const snapshot = await getDocs(query(collection(db, 'posts'), where('authorId', '==', uid), limit(1)));
-  // Ownership must also be enforced by Firestore security rules.
-  if (!snapshot.docs.some(item => item.id === postId)) throw new Error('Publicação não pertence a esta conta.');
-  return deleteDoc(postRef);
-}
